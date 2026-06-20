@@ -1,0 +1,44 @@
+app = "viridian"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Two processes from one image: the FastAPI web app (process "app" — matches the
+# existing machine so its volume isn't disturbed) and the Discord bot (a thin client
+# that POSTs photos to the web /api/grade, so both share one engine + DB).
+[processes]
+  app = "uvicorn web.app:app --host 0.0.0.0 --port 8000"
+  bot = "python -m src.bot"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "10s"
+    timeout = "3s"
+    grace_period = "30s"
+    method = "get"
+    path = "/api/health"
+
+# Only the web process needs the card index / debug volume; the bot has no index.
+[[mounts]]
+  source = "viridian_data"
+  destination = "/app/data"
+  processes = ["app"]
+
+# Web carries the 278MB ORB index. The grade lock keeps a single grade within 2GB.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2048mb"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["bot"]

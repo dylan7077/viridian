@@ -1,0 +1,36 @@
+# === secrets — never ship these ===
+.env
+.env.*
+
+# === venv + build artifacts ===
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# === data directory (mounted as volume at runtime) ===
+data/
+
+# === system + IDE cruft ===
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === git ===
+.git/
+.gitignore
+
+# === docs we don't need in the image ===
+README.md
+LIBRARY_NOTES.md
+
+# === scripts (not needed at runtime) ===
+scripts/
+
+# === tests ===
+tests/

@@ -1,0 +1,587 @@
+/* Card Library — shares the holo/tilt language with the main site */
+
+.lib-page {
+  /* shared style.css sets `main { display:flex; justify-content:center }`, which
+     would lay our sections out as a centered row — force normal block stacking. */
+  display: block;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 28px 60px;
+}
+
+/* ── Consolidated sticky control bar ────────────────────── */
+.lib-bar {
+  position: sticky;
+  top: 12px;
+  z-index: 40;
+  margin-top: 24px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-radius: var(--radius);
+  /* sits over the scrolling grid, so keep it near-solid + lifted */
+  background: rgba(13, 15, 19, 0.92);
+  box-shadow: 0 14px 34px -22px rgba(0, 0, 0, 0.9);
+}
+.lib-bar .lib-search-wrap { flex: 1 1 280px; min-width: 200px; }
+.lib-bar .lib-set-wrap    { flex: 0 1 230px; min-width: 170px; }
+
+.lib-search-wrap, .lib-set-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* live count chip (sits inside the bar) */
+.lib-tb-count {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 50px; padding: 0 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.lib-tb-count .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  animation: pulse 2.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.lib-tb-count .num {
+  font-family: var(--display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  background-image: linear-gradient(90deg, var(--primary) 0%, var(--holo-pink) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  line-height: 1;
+}
+.lib-tb-count .lbl {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%      { transform: scale(1.4); opacity: 0.55; }
+}
+
+.lib-search {
+  width: 100%;
+  height: 50px;
+  padding: 0 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color .18s, background .18s, box-shadow .18s;
+}
+.lib-search::placeholder { color: var(--muted); }
+.lib-search:hover { border-color: var(--border-strong); }
+.lib-search:focus {
+  border-color: var(--primary);
+  background: var(--surface-hover);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.lib-search-icon {
+  position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+  transition: color .15s;
+}
+.lib-search:focus ~ .lib-search-icon { color: var(--primary); }
+
+.lib-search-clear {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: none; background: var(--border-strong);
+  color: var(--text);
+  font-size: 1.05rem; line-height: 1;
+  cursor: pointer;
+  transition: background .15s, color .15s, transform .15s;
+}
+.lib-search-clear:hover { background: var(--accent); color: #2A0813; transform: translateY(-50%) scale(1.1); }
+
+/* ── custom set picker ──────────────────────────────────── */
+.lib-set-wrap { position: relative; }
+
+.lib-set-btn {
+  width: 100%;
+  height: 50px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 38px 0 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .18s, background .18s, box-shadow .18s;
+  position: relative;
+}
+.lib-set-btn:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.lib-set-btn[aria-expanded="true"] {
+  border-color: var(--primary);
+  background: var(--surface-hover);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+.lib-set-btn .lib-set-icon { color: var(--muted); flex-shrink: 0; }
+.lib-set-btn[aria-expanded="true"] .lib-set-icon,
+.lib-set-btn.is-picked .lib-set-icon { color: var(--primary); }
+.lib-set-label {
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lib-set-chevron {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--muted);
+  transition: transform .18s, color .15s;
+  pointer-events: none;
+}
+.lib-set-btn[aria-expanded="true"] .lib-set-chevron { transform: translateY(-50%) rotate(180deg); color: var(--primary); }
+
+/* the popover */
+.lib-set-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0; right: 0;
+  z-index: 30;
+  /* near-solid so the set list is readable over the card grid below */
+  background: #0d0f13;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 24px 50px -12px rgba(0,0,0,0.7), 0 0 0 1px rgba(6,182,212,0.10);
+  display: grid;
+  gap: 8px;
+  animation: pop-in .15s ease;
+}
+/* the [hidden] attr alone loses to display:grid above — force it closed */
+.lib-set-pop[hidden] { display: none; }
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.lib-set-search {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color .15s;
+}
+.lib-set-search::placeholder { color: var(--muted); }
+.lib-set-search:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-glow); }
+.lib-set-list {
+  max-height: 280px;
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+  padding: 2px;
+}
+.lib-set-list::-webkit-scrollbar { width: 8px; }
+.lib-set-list::-webkit-scrollbar-track { background: transparent; }
+.lib-set-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.lib-set-list::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+.lib-set-option {
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.lib-set-option:hover,
+.lib-set-option.is-active {
+  background: var(--primary-dim);
+  color: var(--primary);
+}
+.lib-set-option .opt-count {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.lib-set-option.is-active .opt-count { color: var(--primary); opacity: 0.8; }
+.lib-set-empty {
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+/* ── filter chip row (only rendered when a filter is active) ──── */
+.lib-filters {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+.lib-filters[hidden] { display: none; }
+.lib-filters-label {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.lib-filters-chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  flex: 1; min-width: 0;
+  align-items: center;
+}
+.lib-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  background: var(--primary-dim);
+  color: var(--primary);
+  border: 1px solid rgba(6, 182, 212, 0.30);
+  max-width: 100%;
+}
+.lib-chip strong { color: var(--text); font-weight: 500; }
+.lib-chip button {
+  display: inline-grid; place-items: center;
+  width: 18px; height: 18px;
+  border: none; background: rgba(6, 182, 212, 0.20);
+  color: var(--primary);
+  border-radius: 50%;
+  font-size: 0.9rem; line-height: 1;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.lib-chip button:hover { background: var(--accent); color: #2A0813; }
+.lib-chip.lib-chip-empty {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--border-strong);
+  font-style: italic;
+}
+.lib-clear-all {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  flex-shrink: 0;
+}
+.lib-clear-all:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.lib-clear-all svg { stroke: currentColor; }
+
+/* ── pagination (compact, lives inside the bar) ──────────── */
+.lib-pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-family: var(--mono);
+}
+.lib-pg-btn {
+  display: inline-grid; place-items: center;
+  width: 42px; height: 50px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.lib-pg-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.lib-pg-btn:disabled { opacity: .28; cursor: default; }
+
+.lib-pg-info {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  height: 50px; padding: 0 12px;
+  align-items: center;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.lib-pg-cur {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--primary);
+}
+.lib-pg-sep { opacity: 0.45; }
+.lib-pg-total { color: var(--text); }
+
+/* ── grid ─────────────────────────────────────────────────── */
+.lib-grid {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+  perspective: 1100px;          /* enables the 3D hover-tilt on cards */
+}
+
+@media (min-width: 1500px) {
+  .lib-grid { grid-template-columns: repeat(5, 1fr); }
+}
+
+.card-item {
+  --rx: 0deg; --ry: 0deg;
+  position: relative; border-radius: var(--radius-sm); overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border);
+  transition: transform .14s ease, border-color .2s ease, box-shadow .2s ease;
+  cursor: pointer; aspect-ratio: 5/7;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rx)) rotateY(var(--ry));   /* cursor parallax (set by premium.js) */
+}
+.card-item:hover {
+  transform: translateY(-5px) rotateX(var(--rx)) rotateY(var(--ry)) scale(1.015);
+  border-color: rgba(45, 212, 160, 0.45);
+  box-shadow: 0 18px 36px -14px rgba(0,0,0,0.7), 0 0 22px -6px var(--primary-glow);
+}
+
+.card-img-wrap {
+  position: relative; width: 100%; height: 100%; overflow: hidden;
+  /* skeleton shimmer shown until the artwork finishes loading */
+  background:
+    linear-gradient(110deg, var(--surface) 30%, var(--surface-hover) 50%, var(--surface) 70%)
+    0 0 / 220% 100%;
+  animation: card-skeleton 1.3s ease-in-out infinite;
+}
+.card-img-wrap:has(img.is-loaded),
+.card-img-wrap:has(.placeholder) { animation: none; background: var(--surface); }
+.card-img-wrap img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+@keyframes card-skeleton {
+  0%   { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
+}
+
+.card-item:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow), 0 14px 30px -12px rgba(0,0,0,0.6);
+}
+
+.card-img-wrap .placeholder {
+  width: 100%; height: 100%; display: grid; place-items: center;
+  background: linear-gradient(135deg, rgba(6,182,212,0.10), rgba(236,72,153,0.05));
+  color: var(--muted); font-family: var(--mono); font-size: 0.7rem;
+  text-align: center; padding: 20px;
+}
+
+/* Holo shimmer — cyan → pink (no purple).
+   Idle by default; the shimmer only animates while the card is hovered/focused.
+   With up to 100 cards on screen, running ~200 infinite blend-mode animations at
+   rest janks the compositor (and froze screenshot capture) — reacting to the user
+   is both cheaper and reads as more premium. */
+.holo {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(255,255,255,0.02) 2px,
+      rgba(255,255,255,0.02) 4px
+    ),
+    linear-gradient(
+      135deg,
+      var(--holo-cyan) 0%,
+      var(--holo-pink) 25%,
+      var(--holo-cyan) 50%,
+      var(--holo-pink) 75%,
+      var(--holo-cyan) 100%);
+  background-size: 200% 200%;
+  mix-blend-mode: overlay;
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+.holo::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 30%,
+    rgba(255,255,255,0.18) 48%,
+    rgba(255,255,255,0.22) 52%,
+    transparent 70%);
+  background-size: 300% 300%;
+}
+.card-item:hover .holo,
+.card-item:focus-visible .holo {
+  opacity: 0.6;
+  animation: holo-shift 4s ease-in-out infinite alternate;
+}
+.card-item:hover .holo::after,
+.card-item:focus-visible .holo::after {
+  animation: holo-shine 3s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-item:hover .holo, .card-item:focus-visible .holo,
+  .card-item:hover .holo::after, .card-item:focus-visible .holo::after { animation: none; }
+}
+@keyframes holo-shift { 0% { background-position: 0% 0%; } 100% { background-position: 100% 100%; } }
+@keyframes holo-shine { 0% { background-position: 200% 0%; } 100% { background-position: 0% 200%; } }
+
+.card-info {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 10px 10px 8px;
+  background: linear-gradient(transparent, rgba(2, 6, 23, 0.94));
+  pointer-events: none;
+}
+.card-name { font-family: var(--display); font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-set  { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+
+/* ── empty + loading states ──────────────────────────────── */
+.lib-empty {
+  grid-column: 1 / -1;
+  display: grid; place-items: center;
+  padding: 80px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  gap: 14px;
+}
+.lib-empty .spinner { margin: 0; }
+.lib-empty-state { padding: 60px 20px 40px; }
+.lib-empty-state p { margin-bottom: 10px; }
+
+/* ── modal — card showcase + price + CTA ─────────────────── */
+.lib-modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; overflow-y: auto; }
+.lib-modal[hidden] { display: none; }
+.lib-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.82); backdrop-filter: blur(6px); }
+.lib-modal-card { position: relative; z-index: 1; display: flex; align-items: stretch;
+  justify-content: center; gap: 22px; max-width: 100%; margin: auto; flex-wrap: wrap;
+  animation: lib-pop .25s ease; }
+@keyframes lib-pop { from { opacity: 0; transform: scale(.96); } }
+.lib-modal .holo-card {
+  width: min(300px, 64vw); flex-shrink: 0; align-self: center;
+  overflow: hidden; border-radius: 12px;
+  box-shadow: 0 36px 70px -34px rgba(0, 0, 0, 0.95);
+}
+/* library page doesn't load the holo-tilt CSS, so just keep the image in its box */
+.lib-modal .holo-card img { width: 100%; height: auto; display: block; }
+/* solid panels so the name / CTA / prices read as clean cards, not floating text */
+.lib-modal-info,
+.lib-price-panel {
+  background: #14171c;
+  border: 1px solid var(--border-2);
+  border-radius: 18px;
+  box-shadow: 0 36px 70px -34px rgba(0, 0, 0, 0.95);
+}
+.lib-modal-info {
+  text-align: left;
+  width: 250px;
+  padding: 24px 22px 22px;
+  display: flex; flex-direction: column;
+}
+.lib-modal-info h3 { font-family: var(--display); font-weight: 600; font-size: 1.4rem; line-height: 1.15; }
+.lib-modal-info p { color: var(--muted); font-family: var(--mono); font-size: 0.8rem; margin-top: 6px; }
+.lib-modal-close { position: fixed; top: 20px; right: 22px; z-index: 2; width: 42px; height: 42px;
+  border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: 1.5rem; line-height: 1; cursor: pointer; backdrop-filter: blur(8px); }
+.lib-modal-close:hover { border-color: var(--accent); color: var(--accent); }
+.lib-grade-cta { display: block; width: 100%; margin-top: auto; text-align: center; }
+.lib-price-note {
+  font-family: var(--mono) !important; font-size: 0.64rem !important;
+  color: var(--muted); margin-top: 10px !important; line-height: 1.5; opacity: 0.85;
+}
+
+/* ── price panel — its own column to the side (USD / EUR / GBP) ───── */
+.lib-price-panel {
+  width: 268px;
+  padding: 20px 20px 18px;
+  display: flex; flex-direction: column;
+}
+.lib-price-panel[hidden] { display: none; }
+.lib-price-title {
+  font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+}
+.lib-price-table { width: 100%; border-collapse: collapse; }
+.lib-price-table th {
+  font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--faint); font-weight: 500;
+  text-align: right; padding: 0 0 8px;
+}
+.lib-price-table th.ph { color: var(--accent); }
+.lib-price-table th em { font-style: normal; opacity: 0.6; }
+.lib-price-table td { padding: 9px 0; border-top: 1px solid var(--border); text-align: right; }
+.lib-price-table tr td:first-child { text-align: left; }
+.pc-cur {
+  font-family: var(--mono); font-size: 0.78rem; color: var(--muted); letter-spacing: 0.04em;
+}
+.pc-raw { font-family: var(--display); font-weight: 600; font-size: 1rem; color: var(--text); }
+.pc-graded { font-family: var(--display); font-weight: 600; font-size: 1rem; color: var(--accent); }
+.lib-price-sub {
+  font-family: var(--mono); font-size: 0.6rem; color: var(--faint);
+  margin-top: 14px; line-height: 1.5;
+}
+
+/* ── responsive ───────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .lib-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+}
+@media (max-width: 860px) {
+  .lib-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+  /* let the count + pagination wrap to their own line, full width, evenly split */
+  .lib-bar { gap: 8px; }
+  .lib-bar .lib-search-wrap { flex: 1 1 100%; }
+  .lib-bar .lib-set-wrap { flex: 1 1 100%; }
+  .lib-tb-count { flex: 1 1 auto; justify-content: center; }
+  .lib-pages { flex: 1 1 auto; justify-content: center; }
+}
+/* modal stacks card → info → prices on narrow screens */
+@media (max-width: 760px) {
+  .lib-modal-card { flex-direction: column; align-items: stretch; gap: 16px; }
+  .lib-modal-info, .lib-price-panel { width: min(340px, 86vw); margin: 0 auto; }
+}
+@media (max-width: 560px) {
+  .lib-page { padding: 0 16px 40px; }
+  .lib-bar { position: static; }   /* free up vertical space on phones */
+  .lib-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}

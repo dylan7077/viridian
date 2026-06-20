@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="vcut" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#CBD5E1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- dark disc -->
+  <circle cx="256" cy="256" r="248" fill="url(#bg)"/>
+
+  <!-- outer ring -->
+  <circle cx="256" cy="256" r="240" fill="none" stroke="url(#ring)" stroke-width="3"/>
+  <!-- inner ring (thin) -->
+  <circle cx="256" cy="256" r="228" fill="none" stroke="#06B6D4" stroke-width="1.2" stroke-dasharray="2 4" opacity="0.6"/>
+
+  <!-- big "V" cut, centered, slightly taller than wide -->
+  <path d="M 152 152
+           L 215 152
+           L 256 296
+           L 297 152
+           L 360 152
+           L 285 392
+           L 227 392 Z"
+        fill="url(#vcut)"/>
+
+  <!-- sparkles top-left -->
+  <g fill="#EC4899">
+    <path d="M 130 100
+             L 135 122
+             L 157 127
+             L 135 132
+             L 130 154
+             L 125 132
+             L 103 127
+             L 125 122 Z"/>
+    <path d="M 170 140
+             L 173 152
+             L 185 155
+             L 173 158
+             L 170 170
+             L 167 158
+             L 155 155
+             L 167 152 Z"
+          opacity="0.85"/>
+  </g>
+
+  <!-- tally marks at the bottom: five small "V" shapes in a row -->
+  <g fill="none" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.7">
+    <path d="M 196 438 L 207 460 L 218 438"/>
+    <path d="M 222 438 L 233 460 L 244 438"/>
+    <path d="M 248 438 L 259 460 L 270 438"/>
+    <path d="M 274 438 L 285 460 L 296 438"/>
+    <path d="M 300 438 L 311 460 L 322 438"/>
+  </g>
+</svg>

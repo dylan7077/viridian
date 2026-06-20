@@ -1,0 +1,14 @@
+# Railway ignore — data is mounted as a volume, not in the image
+data/
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+.git/
+.gitignore
+.dockerignore
+README.md
+LIBRARY_NOTES.md
+tests/
+scripts/

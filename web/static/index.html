@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Viridian — Pokémon Card Grading</title>
+  <meta name="description" content="What's your Pokémon card worth? Snap a photo for the exact card, an estimated PSA grade, and its live market value — free." />
+  <meta property="og:title" content="Viridian — What's your card worth?" />
+  <meta property="og:description" content="Snap a photo for the exact card, an estimated PSA grade, and its live market value. Free." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Inter:wght@400;450;500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=6" />
+  <link rel="stylesheet" href="/static/cards.css" />
+  <link rel="stylesheet" href="/static/share.css" />
+  <script>
+    /* Show the intro splash once per browser session (skip on refresh / back-nav). */
+    try {
+      if (sessionStorage.getItem("viridian_splash")) document.documentElement.classList.add("skip-splash");
+      else sessionStorage.setItem("viridian_splash", "1");
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <!-- Premium intro splash — fades out on its own to reveal the page -->
+  <div id="splash" aria-hidden="true">
+    <div class="splash-inner">
+      <img class="splash-logo" src="/static/logo.svg" alt="" />
+      <div class="splash-name">Viridian</div>
+      <div class="splash-tag">Grading Lab</div>
+      <div class="splash-bar"><span></span></div>
+    </div>
+  </div>
+
+  <div class="bg"></div>
+  <header class="nav">
+    <a class="brand" href="/">
+      <img class="brand-mark" src="/static/logo.svg" alt="" />
+      <span class="brand-name">Viridian</span>
+    </a>
+    <a class="discord-btn" href="https://discord.com/invite/Mt487zdH" target="_blank" rel="noopener" aria-label="Join the Viridian Discord">
+      <svg class="discord-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3.2a.074.074 0 0 0-.079.037c-.34.6-.717 1.387-.98 2.003a18.27 18.27 0 0 0-5.487 0 12.6 12.6 0 0 0-.997-2.003.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.369a.07.07 0 0 0-.032.027C1.533 7.55.954 10.65 1.238 13.71a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.891.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-3.177-.838-6.249-2.413-8.314a.061.061 0 0 0-.031-.03zM8.02 12.846c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+      <span>Join Discord</span>
+      <span class="discord-count" data-discord-count hidden></span>
+    </a>
+    <nav class="nav-links">
+      <a href="/library">Library</a>
+      <a href="/activity">Activity</a>
+      <a href="/about">About</a>
+    </nav>
+  </header>
+
+  <main>
+   <div class="home-wrap">
+    <section class="tool">
+      <h1>What's your card worth?</h1>
+      <p class="sub">Snap a photo — get the exact card, an estimated PSA grade, and its live market value.</p>
+
+      <div class="hero-stats">
+        <span class="hs-pill hs-free">✓ Free forever</span>
+        <span class="hs-pill"><b id="hsCount">20,102</b> cards</span>
+        <span class="hs-pill">~7s a grade</span>
+      </div>
+
+      <label id="dropzone" class="dropzone">
+        <input id="file" type="file" accept="image/*" capture="environment" hidden />
+        <div class="dz-inner">
+          <div class="dz-icon">↑</div>
+          <p class="dz-main">Drop a card or choose a photo</p>
+          <p class="dz-sub">Flat, well‑lit, whole card on a plain background</p>
+        </div>
+      </label>
+
+      <button type="button" id="takePhoto" class="btn cam-cta full">
+        <span class="cam-cta-ic">📷</span> Take a photo
+      </button>
+
+      <div id="crop" class="crop" hidden>
+        <div class="crop-stage" id="crop-stage">
+          <img id="preview" alt="" />
+          <svg class="crop-svg" id="crop-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <polygon id="crop-poly" points="" />
+          </svg>
+          <div class="crop-handle" data-i="0"></div>
+          <div class="crop-handle" data-i="1"></div>
+          <div class="crop-handle" data-i="2"></div>
+          <div class="crop-handle" data-i="3"></div>
+          <div class="crop-detecting" id="cropDetecting" hidden>
+            <div class="crop-spinner"></div>
+            <p class="crop-detecting-label">Auto-framing your card…</p>
+            <p class="crop-detecting-sub">Finding the edges so the crop lines up</p>
+          </div>
+        </div>
+        <div class="crop-bar">
+          <span class="crop-hint">Drag the corners onto the card’s edges</span>
+          <button type="button" id="crop-reset" class="crop-link">Reset</button>
+          <button type="button" id="crop-retake" class="crop-link">Change image</button>
+        </div>
+      </div>
+
+      <button id="analyze" class="btn primary full" disabled>Analyze</button>
+
+      <div id="result" class="result" hidden>
+        <div id="result-body"></div>
+      </div>
+    </section>
+
+    <!-- Live "recently graded" strip — social proof, hidden until cards exist -->
+    <section class="home-strip" id="homeStrip" hidden>
+      <div class="home-strip-head">
+        <span class="hs-live"><span class="hs-live-dot"></span>Just graded</span>
+        <a class="home-strip-link" href="/activity">See all &rarr;</a>
+      </div>
+      <div class="home-strip-track" id="homeStripTrack"></div>
+    </section>
+   </div>
+  </main>
+
+  <footer class="site-foot">
+    <span class="foot-note">Estimate only · not affiliated with PSA</span>
+    <span class="foot-meta"><span id="stat-cards">—</span> cards · <span id="status-text"></span></span>
+    <span class="foot-year">© <span id="year"></span></span>
+  </footer>
+
+  <script src="/static/sharecard.js?v=2"></script>
+  <script src="/static/camera.js?v=3"></script>
+  <script src="/static/app.js?v=4"></script>
+  <script src="/static/crop.js?v=3"></script>
+  <script src="/static/home.js?v=2"></script>
+  <script src="/static/premium.js?v=1"></script>
+  <script src="/static/discord.js?v=1"></script>
+</body>
+</html>

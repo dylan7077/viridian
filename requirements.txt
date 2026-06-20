@@ -1,0 +1,21 @@
+# --- core CV / grading ---
+opencv-python-headless>=4.8
+numpy>=1.24
+Pillow>=10.0
+ImageHash>=4.3
+requests>=2.31
+python-dotenv>=1.0
+
+# --- Discord front-end ---
+discord.py>=2.3,<3
+
+# --- web front-end ---
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+pytesseract>=0.3
+
+# --- persistence (grades feed) ---
+# SQLite locally; set DATABASE_URL to a Postgres URL in production.
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9       # Postgres driver (used when DATABASE_URL is postgresql://)

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Activity — Viridian Grading Lab</title>
+  <meta name="description" content="Live feed of cards graded on the Viridian website and Discord bot." />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/activity.css?v=4">
+</head>
+<body>
+  <div class="bg"></div>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <img class="brand-mark" src="/static/logo.svg" alt="" />
+        <span class="brand-name">Viridian</span>
+      </a>
+      <a class="discord-btn" href="https://discord.com/invite/Mt487zdH" target="_blank" rel="noopener" aria-label="Join the Viridian Discord">
+        <svg class="discord-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3.2a.074.074 0 0 0-.079.037c-.34.6-.717 1.387-.98 2.003a18.27 18.27 0 0 0-5.487 0 12.6 12.6 0 0 0-.997-2.003.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.369a.07.07 0 0 0-.032.027C1.533 7.55.954 10.65 1.238 13.71a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.891.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-3.177-.838-6.249-2.413-8.314a.061.061 0 0 0-.031-.03zM8.02 12.846c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+        <span>Join Discord</span>
+        <span class="discord-count" data-discord-count hidden></span>
+      </a>
+      <nav class="nav-links">
+        <a href="/library">Library</a>
+        <a href="/activity" class="is-active">Activity</a>
+        <a href="/about">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="act-page">
+    <section class="act-head glass">
+      <div class="act-title-block">
+        <span class="kicker"><span class="k-dot"></span>Live feed</span>
+        <h1>Recently graded</h1>
+        <p class="act-sub">Every card checked on the website and through the Discord bot, newest first.</p>
+      </div>
+      <div class="act-legend">
+        <span class="act-src act-src-web">● Website</span>
+        <span class="act-src act-src-bot">● Discord bot</span>
+      </div>
+    </section>
+
+    <!-- Live sliding preview of every submitted card (filled + refreshed by JS) -->
+    <div class="act-slideshow" id="actSlideshow" hidden>
+      <div class="act-slide-track" id="actSlideTrack"></div>
+    </div>
+
+    <!-- Top 5 highest-value cards graded in the last 7 days (filled by JS) -->
+    <section class="act-top5" id="actTop5" hidden>
+      <span class="act-top-badge">★ Top grades this week</span>
+      <div class="act-top5-grid" id="actTop5Grid"></div>
+    </section>
+
+    <!-- Site-wide scan graphs (Chart.js; refresh when a new grade lands) -->
+    <section class="ov-stats" id="ovStats" hidden>
+      <div class="stat-board-head">
+        <span class="kicker"><span class="k-dot"></span>Overall stats</span>
+        <h2>Across all cards</h2>
+        <p class="act-sub" id="ovSub">Every grade recorded — scan volume over time and how grades break down.</p>
+      </div>
+      <div class="ov-grid">
+        <div class="stat-chart-wrap">
+          <div class="stat-chart-title">Scans over time</div>
+          <div class="ov-chart"><canvas id="ovTimeline"></canvas></div>
+        </div>
+        <div class="stat-chart-wrap">
+          <div class="stat-chart-title">Grade distribution</div>
+          <div class="ov-chart"><canvas id="ovDist"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="act-feed" id="actFeed">
+      <div class="act-empty" id="actLoading">
+        <div class="spinner"></div>
+        <p>Loading the feed…</p>
+      </div>
+    </div>
+
+    <div class="act-empty" id="actEmpty" hidden>
+      <p>No cards graded yet. Grade one on the <a class="holo-link" href="/">home page</a> and it'll appear here.</p>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <div>
+        <div class="brand"><img class="brand-mark" src="/static/logo.svg" alt="" /><span class="brand-name">Viridian</span></div>
+        <p class="footer-tag">Grade without guesswork.</p>
+      </div>
+      <div class="credits">
+        <a class="holo-link" href="https://tcgdex.dev" target="_blank" rel="noopener">Card data: TCGdex</a>
+      </div>
+    </div>
+    <p class="copyright" style="text-align:center">&copy; <span id="year"></span> Viridian</p>
+  </footer>
+
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script src="/static/activity.js?v=4"></script>
+  <script src="/static/stats.js?v=2"></script>
+  <script>document.getElementById("year").textContent = new Date().getFullYear()</script>
+  <script src="/static/premium.js?v=1"></script>
+  <script src="/static/discord.js?v=1"></script>
+</body>
+</html>

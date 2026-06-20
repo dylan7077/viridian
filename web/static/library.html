@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Card Library — Viridian Grading Lab</title>
+  <meta name="description" content="Browse the full Viridian card index — searchable by name, set, or number." />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/library.css?v=2">
+</head>
+<body>
+  <div class="bg"></div>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <img class="brand-mark" src="/static/logo.svg" alt="" />
+        <span class="brand-name">Viridian</span>
+      </a>
+      <a class="discord-btn" href="https://discord.com/invite/Mt487zdH" target="_blank" rel="noopener" aria-label="Join the Viridian Discord">
+        <svg class="discord-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3.2a.074.074 0 0 0-.079.037c-.34.6-.717 1.387-.98 2.003a18.27 18.27 0 0 0-5.487 0 12.6 12.6 0 0 0-.997-2.003.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.369a.07.07 0 0 0-.032.027C1.533 7.55.954 10.65 1.238 13.71a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.891.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-3.177-.838-6.249-2.413-8.314a.061.061 0 0 0-.031-.03zM8.02 12.846c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+        <span>Join Discord</span>
+        <span class="discord-count" data-discord-count hidden></span>
+      </a>
+      <nav class="nav-links">
+        <a href="/library" class="is-active">Library</a>
+        <a href="/activity">Activity</a>
+        <a href="/about">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="lib-page">
+    <!-- One consolidated, sticky control bar: search · set · count · pagination -->
+    <section class="lib-bar glass">
+      <div class="lib-search-wrap">
+        <svg class="lib-search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="16" y1="16" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <input type="text" id="libSearch" class="lib-search" placeholder="Search by name, set, or number…" autocomplete="off" />
+        <button id="libSearchClear" class="lib-search-clear" type="button" aria-label="Clear search" hidden>&times;</button>
+      </div>
+
+      <!-- Custom set picker: type to filter, click to select -->
+      <div class="lib-set-wrap" id="libSetWrap">
+        <button id="libSetBtn" class="lib-set-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <svg class="lib-set-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <path d="M3 7h18M3 12h18M3 17h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span class="lib-set-label" id="libSetLabel">All sets</span>
+          <svg class="lib-set-chevron" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+            <path d="M2 4 L6 8 L10 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="lib-set-pop" id="libSetPop" role="listbox" hidden>
+          <input type="text" id="libSetSearch" class="lib-set-search" placeholder="Filter sets…" autocomplete="off" />
+          <div class="lib-set-list" id="libSetList">
+            <button class="lib-set-option" data-value="" type="button" role="option">All sets</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live card count -->
+      <div class="lib-tb-count" id="libCount">
+        <span class="dot"></span>
+        <span class="num" id="libCountNum">&mdash;</span>
+        <span class="lbl" id="libCountLbl">cards</span>
+      </div>
+
+      <!-- Pagination -->
+      <div class="lib-pages" id="libPagesBar">
+        <button class="lib-pg-btn" id="libPgFirst" type="button" aria-label="First page">&#x21E4;</button>
+        <button class="lib-pg-btn" id="libPgPrev" type="button" aria-label="Previous page">&#x2190;</button>
+        <span class="lib-pg-info">
+          <span class="lib-pg-cur" id="libPgCur">1</span>
+          <span class="lib-pg-sep">/</span>
+          <span class="lib-pg-total" id="libPgTotal">1</span>
+        </span>
+        <button class="lib-pg-btn" id="libPgNext" type="button" aria-label="Next page">&#x2192;</button>
+        <button class="lib-pg-btn" id="libPgLast" type="button" aria-label="Last page">&#x21E5;</button>
+      </div>
+    </section>
+
+    <!-- Active filter chips — only shown when a filter is applied -->
+    <div class="lib-filters" id="libFilters" hidden>
+      <span class="lib-filters-label">Filters</span>
+      <div class="lib-filters-chips" id="libFilterChips"></div>
+      <button class="lib-clear-all" id="libEmptyReset" type="button">
+        <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+          <path d="M2 2 L10 10 M10 2 L2 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        Clear all
+      </button>
+    </div>
+
+    <div class="lib-grid" id="libGrid">
+      <div class="lib-empty lib-loading">
+        <div class="spinner"></div>
+        <p>Loading the index…</p>
+      </div>
+    </div>
+
+    <div class="lib-empty lib-empty-state" id="libEmpty" hidden>
+      <p>No cards match your filters.</p>
+    </div>
+  </main>
+
+  <div id="libModal" class="lib-modal" hidden>
+    <div class="lib-modal-backdrop" id="libModalBackdrop"></div>
+    <button class="lib-modal-close" id="libModalClose" aria-label="Close">&times;</button>
+    <div class="lib-modal-card">
+      <div class="holo-card holo-on" id="libModalHolo"><img id="libModalImg" src="" alt=""></div>
+      <div class="lib-modal-info">
+        <h3 id="libModalName"></h3>
+        <p id="libModalMeta"></p>
+        <a class="btn primary lib-grade-cta" id="libGradeCta" href="/">Grade my copy &rarr;</a>
+        <p class="lib-price-note" id="libPriceNote"></p>
+      </div>
+
+      <!-- Price panel — its own column to the side, all three currencies -->
+      <aside class="lib-price-panel" id="libModalPrice" hidden>
+        <div class="lib-price-title">What it's worth</div>
+        <table class="lib-price-table">
+          <thead>
+            <tr><th></th><th>Raw</th><th class="ph">PSA 10 <em>est.</em></th></tr>
+          </thead>
+          <tbody id="libPriceRows"></tbody>
+        </table>
+        <p class="lib-price-sub">Live market price · graded value is an estimate.</p>
+      </aside>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-inner">
+      <div>
+        <div class="brand"><img class="brand-mark" src="/static/logo.svg" alt="" /><span class="brand-name">Viridian</span></div>
+        <p class="footer-tag">Grade without guesswork.</p>
+      </div>
+      <div class="credits">
+        <a class="holo-link" href="https://tcgdex.dev" target="_blank" rel="noopener">Card data: TCGdex</a>
+        <a class="holo-link" href="https://github.com/simeydotme/pokemon-cards-css" target="_blank" rel="noopener">Holo: pokemon-cards-css</a>
+      </div>
+    </div>
+    <p class="copyright" style="text-align:center">&copy; <span id="year"></span> Viridian</p>
+  </footer>
+
+  <script src="/static/library.js"></script>
+  <script>document.getElementById("year").textContent = new Date().getFullYear()</script>
+  <script src="/static/premium.js?v=1"></script>
+  <script src="/static/discord.js?v=1"></script>
+</body>
+</html>

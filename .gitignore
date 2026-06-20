@@ -1,0 +1,30 @@
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+
+# --- Data, models, caches (large, machine-specific, never published) ---
+data/
+*.db
+*.db-wal
+*.db-shm
+*.npz
+*.onnx
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# --- OS / editor ---
+.DS_Store
+*.log
+
+# --- Local tooling / internal notes (not part of the published project) ---
+.claude/
+LIBRARY_NOTES.md
+STRESS_TEST.md
