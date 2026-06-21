@@ -120,3 +120,14 @@ fixed resolution). Only genuinely small uploads (<~1500px native) drift. Not fix
 detection-resolution-normalisation change is riskier than this edge case warrants. If it
 matters later: standardise the working resolution before detection, or add a "low-resolution"
 capture warning (the gate already warns on blur/glare/exposure).
+
+## Known edge: centering measurement on hard framings (2026-06-21)
+On an unusual framing (card with a large uniform background margin) the heuristic centering
+can read confidently wrong (e.g. 22/78 where the card is actually ~50/50) — the documented
+"hard tail" of single-photo centering. Mitigations in place: (1) once a card is IDENTIFIED,
+centering is re-measured against its clean reference image (refgrade), which is reliable —
+this is the common path; (2) the gradient `frame` method handles the L/R axis well. Verified:
+0/20 real test photos hit low-confidence centering (all `reference` or `frame`). The failure
+needs a hard framing AND an identification miss simultaneously. The UI now caveats any
+low-confidence centering ("low confidence — reshoot flat"). A real fix = the centering-measure
+rewrite (risky, many prior attempts) — out of scope for an unsupervised pass.

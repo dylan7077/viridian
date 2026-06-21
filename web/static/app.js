@@ -359,7 +359,7 @@ function render(r) {
   if (c.ok) html += centeringDiagram(c);
 
   html += `<div class="subgrades">
-    ${bar("Centering", c.ok ? c.grade : null, false, c.ok ? "measured · counts" : "could not measure")}
+    ${bar("Centering", c.ok ? c.grade : null, false, c.ok ? (c.confidence === "low" ? "low confidence — reshoot flat" : "measured · counts") : "could not measure")}
     ${bar("Surface", g.surface.grade, true, "rough · counts")}
     ${bar("Corners", g.corners.grade, true, "experimental")}
     ${bar("Edges", g.edges.grade, true, "experimental")}
