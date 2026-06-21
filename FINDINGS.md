@@ -78,3 +78,25 @@ separable from artwork, glare, and lighting — no amount of classic-CV tuning c
   limits as executable notes.
 - `src/engine.py` — decode now caps pixels (2200px long edge) before CV: closes the
   decompression-bomb OOM hole the 10 MB byte cap missed.
+
+## Resources & the unblock (2026-06-21)
+The corner/edge gap needs labeled defect data. Surveyed what's online:
+- **[Roboflow "Card Grader"](https://universe.roboflow.com/group-6-major-project/card-grader)** — ~600 imgs labeled for edge/corner wear + scratches. THE relevant set for our gap. Requires a FREE Roboflow API key to export (confirmed: no keyless download).
+- **[crimsonthinker/psa_pokemon_cards](https://github.com/crimsonthinker/psa_pokemon_cards)** — VGG16 dual-branch grader, ~0.5 MAE. Code only (no data/weights shipped). Best architecture to copy.
+- **[jshan9078/PSAGradePredictor](https://github.com/jshan9078/PSAGradePredictor)** — dual-branch ResNet + **ordinal-aware loss** (the right loss for 1-10 grades). Code only.
+- **[PSA grading standards](https://www.psacard.com/gradingstandards)** — exact tolerances (front: 55/45=PSA10, 60/40=9, 65/35=8) to verify `_centering_to_grade`.
+- HF `tooni/pokemoncards` = catalog metadata only (no grades) — not useful.
+
+**Ready-to-run pipeline** (`scripts/eval_roboflow_grader.py`): pulls the Card Grader set and
+reports whether its labels cover corners/edges/surface and if there's enough to train.
+Blocked only on a free key. To unblock (30 sec):
+```
+# 1. sign up free at https://app.roboflow.com  -> Settings -> copy Private API Key
+# 2. then:
+ROBOFLOW_API_KEY=xxxxx .venv/bin/python scripts/eval_roboflow_grader.py
+```
+Offline self-test (no key needed): `python3 scripts/eval_roboflow_grader.py --selftest`
+
+NOTE: installing `roboflow` swapped opencv-python -> opencv-python-headless in the venv
+(roboflow forces it). Harmless — grader is server-side, cv2 4.10 works, all tests pass; and
+headless is actually leaner for the VPS. requirements.txt unchanged.
