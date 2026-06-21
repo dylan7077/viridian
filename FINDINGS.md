@@ -109,3 +109,14 @@ buyers who later submit to PSA and get one grade lower. It's defensible (PSA tol
 grading._centering_to_grade to match PSA exactly. Locked by scripts/test_centering.py so it
 can't drift silently. Identification + price + grade verified working end-to-end (e.g. 1.jpg ->
 "Froakie" Chaos Rising, confident 0.98, grade 10, priced).
+
+## Known minor limitation: resolution sensitivity (2026-06-21)
+Grades can shift by ~1 across EXTREME input-resolution differences (e.g. a card's centering
+read 8 at 2200px vs 10 at 700px; surface catches more scuff at higher res). Root cause:
+detection precision + source detail vary with resolution, even though the warp is fixed-size.
+Mitigated in practice: decode caps every upload at 2200px and typical phone photos exceed that,
+so normal uploads all normalize to 2200px and grade consistently (verified deterministic at a
+fixed resolution). Only genuinely small uploads (<~1500px native) drift. Not fixed — a
+detection-resolution-normalisation change is riskier than this edge case warrants. If it
+matters later: standardise the working resolution before detection, or add a "low-resolution"
+capture warning (the gate already warns on blur/glare/exposure).
