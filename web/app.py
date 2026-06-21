@@ -10,6 +10,7 @@ import base64
 import collections
 import html
 import json
+import logging
 import re
 import time
 import urllib.request
@@ -490,30 +491,37 @@ async def _do_grade(file: UploadFile, corners, source):
     # Offload the blocking CV + ORB downloads to a thread so the event loop
     # (and /api/health polling) stays responsive while a card is processed.
     result = await run_in_threadpool(engine.process_bytes, data, pts)
-    _save_debug(data, result)
-    # Persistently archive anything we couldn't confidently identify, so failures can
-    # be reviewed and the matcher fixed later. Unlike _save_debug (last-only), this
-    # accumulates one file per failure.
-    if result.get("uncertain") or not result.get("match"):
-        _save_unidentified(data, result)
-    # Token to re-open this photo in the corner-align tool, and the live index count
-    # (so the Discord bot — a thin client — can show it without its own index file).
-    result["align_token"] = _save_align(data)
-    result["indexed"] = _live_index_count()
-    # Shareable snapshot (only for confidently-identified cards) — token + rich link.
-    token = await run_in_threadpool(share.create, result)
-    if token:
-        result["share_token"] = token
-        result["share_url"] = f"{config.WEB_BASE_URL}/g/{token}"
-    # Record to the shared feed. The Discord bot posts source="bot" through this same
-    # endpoint, so both surfaces land in one DB-backed feed.
-    src = "bot" if source == "bot" else "web"
-    entry = await run_in_threadpool(activity.record, src, result)
-    # Mirror WEBSITE grades to the #grading-results feed via the webhook. Bot grades are
-    # NOT mirrored here — the bot posts them into that channel itself (with link buttons),
-    # so mirroring would double-post.
-    if entry and src == "web" and discord_webhook.enabled():
-        await run_in_threadpool(discord_webhook.post_result, result, "the website")
+    # Everything below is bonus side-effects (archive, share, activity feed, webhook, index
+    # count) on an ALREADY-computed grade. None of it may 500 the response — a paid grade must
+    # return even if the DB is locked, disk is full, or Discord is down. Each helper mostly
+    # self-protects; this is the backstop.
+    try:
+        _save_debug(data, result)
+        # Persistently archive anything we couldn't confidently identify, so failures can
+        # be reviewed and the matcher fixed later. Unlike _save_debug (last-only), this
+        # accumulates one file per failure.
+        if result.get("uncertain") or not result.get("match"):
+            _save_unidentified(data, result)
+        # Token to re-open this photo in the corner-align tool, and the live index count
+        # (so the Discord bot — a thin client — can show it without its own index file).
+        result["align_token"] = _save_align(data)
+        result["indexed"] = _live_index_count()
+        # Shareable snapshot (only for confidently-identified cards) — token + rich link.
+        token = await run_in_threadpool(share.create, result)
+        if token:
+            result["share_token"] = token
+            result["share_url"] = f"{config.WEB_BASE_URL}/g/{token}"
+        # Record to the shared feed. The Discord bot posts source="bot" through this same
+        # endpoint, so both surfaces land in one DB-backed feed.
+        src = "bot" if source == "bot" else "web"
+        entry = await run_in_threadpool(activity.record, src, result)
+        # Mirror WEBSITE grades to the #grading-results feed via the webhook. Bot grades are
+        # NOT mirrored here — the bot posts them into that channel itself (with link buttons),
+        # so mirroring would double-post.
+        if entry and src == "web" and discord_webhook.enabled():
+            await run_in_threadpool(discord_webhook.post_result, result, "the website")
+    except Exception:
+        logging.getLogger("viridian").exception("post-grade side-effect failed (grade still returned)")
     return JSONResponse(result)
 
 
