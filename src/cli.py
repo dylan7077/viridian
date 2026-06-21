@@ -4,8 +4,7 @@
 """
 import sys
 import json
-
-import cv2
+from pathlib import Path
 
 from src import engine
 
@@ -13,10 +12,13 @@ from src import engine
 def main():
     if len(sys.argv) < 2:
         raise SystemExit("usage: python -m src.cli <image_path>")
-    img = cv2.imread(sys.argv[1])
-    if img is None:
-        raise SystemExit(f"Could not read image: {sys.argv[1]}")
-    result = engine.process_image(img)
+    try:
+        data = Path(sys.argv[1]).read_bytes()
+    except OSError as e:
+        raise SystemExit(f"Could not read image: {sys.argv[1]} ({e})")
+    # Route through the same hardened pipeline as web/bot (OOM pixel-cap + empty/tiny guards),
+    # so the CLI isn't the one path that decodes a 50MP image unbounded.
+    result = engine.process_bytes(data)
     print(json.dumps(result, indent=2, default=str))
 
 
