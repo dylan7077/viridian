@@ -190,6 +190,7 @@ function buildVerdict(r, g, c, overall) {
     }
   }
 
+  if (r.capture_warning) conChips.push("photo quality");
   if (r.detection_warning) conChips.push("detection warn");
   if (r.match_warning) conChips.push("match warn");
 
@@ -350,6 +351,7 @@ function render(r) {
     </figure>`;
   }
 
+  if (r.capture_warning) html += `<div class="banner warn">📷 ${r.capture_warning} A clearer photo grades more accurately.</div>`;
   if (r.detection_warning) html += `<div class="banner warn">${r.detection_warning}</div>`;
   if (r.match_warning) html += `<div class="banner warn">${r.match_warning}</div>`;
 
