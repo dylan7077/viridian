@@ -667,6 +667,40 @@ def assess_surface(card: np.ndarray) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Capture quality (garbage-in gate)
+# --------------------------------------------------------------------------- #
+def assess_capture_quality(card: np.ndarray) -> dict:
+    """Flag a photo too poor to grade reliably, BEFORE trusting any measurement. A blurry
+    or glare-blown shot still detects geometrically but yields garbage centering/surface —
+    the real reliability killer is bad input, not the algorithm (see FINDINGS.md).
+
+    Measured on the fixed-size warped card so thresholds are stable across photos:
+      * blur — variance of the Laplacian. Sharp cards run 240-800; out-of-focus drops < 80.
+      * glare — fraction of blown, desaturated highlights (holo/lamp glare).
+      * exposure — median brightness too dark / washed out.
+    ponytail: thresholds calibrated on this warp size; retune if the warp dims change."""
+    gray = cv2.cvtColor(card, cv2.COLOR_BGR2GRAY)
+    hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
+    v, s = hsv[:, :, 2], hsv[:, :, 1]
+    blur = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    glare = float(((v > 250) & (s < 30)).mean())
+    bright = float(np.median(v))
+
+    warnings = []
+    if blur < 60:
+        warnings.append("Photo looks out of focus — hold steady and retake.")
+    if glare > 0.03:
+        warnings.append("Glare is washing out part of the card — tilt away from the light.")
+    if bright < 45:
+        warnings.append("Photo is too dark — use more even light.")
+    elif bright > 225:
+        warnings.append("Photo is overexposed — reduce the light or move back.")
+    return {"ok": not warnings, "blur": round(blur, 1),
+            "glare": round(glare, 3), "brightness": round(bright, 1),
+            "warnings": warnings}
+
+
+# --------------------------------------------------------------------------- #
 # Combined result
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -679,6 +713,7 @@ class GradeResult:
     detected: bool = True
     warped: Optional[np.ndarray] = field(default=None, repr=False)
     detect_info: dict = field(default_factory=dict)
+    capture: dict = field(default_factory=dict)
 
 
 # How much to trust a sub-grade by its stated confidence.
@@ -817,4 +852,5 @@ def grade_card(img: np.ndarray, manual_corners=None) -> GradeResult:
     surface = assess_surface(card)
     overall = _combine(centering, corners, edges, surface)
     return GradeResult(overall, centering, corners, edges, surface,
-                       warped=card, detect_info=dbg)
+                       warped=card, detect_info=dbg,
+                       capture=assess_capture_quality(card))

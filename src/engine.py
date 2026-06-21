@@ -125,9 +125,14 @@ def process_image(img: np.ndarray, corners=None) -> dict:
         "match": None,
         "value": None,
         "detection": result.detect_info,
+        "capture": result.capture,
         "overlay": _to_data_uri(grading.annotate_detection(
             result.warped, result.centering, result.corners, result.edges)),
     }
+    # Warn on a poor-quality photo (blur / glare / exposure) — the grade is only as good
+    # as the input, so tell the user to retake rather than silently grading garbage.
+    if result.capture and not result.capture.get("ok", True):
+        out["capture_warning"] = " ".join(result.capture.get("warnings", []))
 
     # Trained CNN prediction (ONNX, fast CPU). Surfaced ALONGSIDE the heuristic grade for
     # now — not replacing it — until the model is trusted. Inert if the model isn't present.
