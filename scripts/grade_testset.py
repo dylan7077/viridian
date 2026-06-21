@@ -28,7 +28,27 @@ def find_images(arg):
         d = os.path.expanduser("~/Documents")
         files = [os.path.join(d, f"{i}.jpg") for i in range(1, 31)]
         files = [f for f in files if os.path.exists(f)]
-    return files
+    return _dedupe(files)
+
+
+def _dedupe(files):
+    """Drop byte-identical duplicates so pass rates reflect unique cards, not copies.
+    (The ~/Documents set has 21-30 duplicating 11-20.)"""
+    import hashlib
+    seen, out, dropped = {}, [], 0
+    for f in files:
+        try:
+            h = hashlib.md5(Path(f).read_bytes()).hexdigest()
+        except OSError:
+            continue
+        if h in seen:
+            dropped += 1
+            continue
+        seen[h] = f
+        out.append(f)
+    if dropped:
+        print(f"(skipped {dropped} duplicate image(s); {len(out)} unique)\n")
+    return out
 
 
 def grade_one(path):
