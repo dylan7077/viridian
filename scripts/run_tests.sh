@@ -5,7 +5,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 [ -d .venv ] && source .venv/bin/activate 2>/dev/null || true
 
-tests=(test_centering test_defects test_quality test_robustness)
+tests=(test_centering test_defects test_quality test_robustness test_pricing)
 fail=0
 for t in "${tests[@]}"; do
   if python3 "scripts/$t.py" >/tmp/vtest_$t.log 2>&1; then
