@@ -156,8 +156,21 @@ def process_image(img: np.ndarray, corners=None) -> dict:
     except Exception:
         pass
 
-    cov = result.detect_info.get("coverage", 1.0)
-    if cov < 0.20:
+    di0 = result.detect_info or {}
+    cov = di0.get("coverage", 1.0)
+    method = di0.get("method")
+    fit = di0.get("aspect_fit", 1.0)
+    quality = di0.get("quality")
+    # "Is this even a card?" guard. A non-card photo (wall, paper, object) still produces a
+    # grade because detection falls back to the whole frame — embarrassing in a demo. The
+    # detector already flags these: method 'fullframe' = nothing found; or a low-quality,
+    # non-card-shaped (low aspect_fit) detection. Warn honestly; real cards are quality=good.
+    if method == "fullframe" or (quality == "low" and fit < 0.55):
+        out["detection_warning"] = (
+            "Couldn't clearly find a card in this photo — this grade may not be meaningful. "
+            "Make sure the whole card is visible, flat, against a contrasting background.")
+        out["card_uncertain"] = True
+    elif cov < 0.20:
         out["detection_warning"] = (
             f"Only {cov:.0%} of the photo was identified as the card — it may be "
             "cropped or zoomed in. Frame the whole card with a margin around it.")

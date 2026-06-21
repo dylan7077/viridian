@@ -67,6 +67,19 @@ def main():
             "grade must survive a pricing outage"
         print("Pricing-outage resilience: grade still returns (value degrades to None).")
 
+    # Non-card guard: a wall / blank paper must be flagged uncertain, not graded as a card.
+    import cv2
+    wall = png(np.full((1500, 2000, 3), 130, np.uint8))
+    paper = np.full((1500, 2000, 3), 40, np.uint8)
+    cv2.rectangle(paper, (600, 400), (1400, 1100), (235, 235, 235), -1)
+    for nm, data in (("wall", wall), ("blank paper", png(paper))):
+        out = engine.process_bytes(data)
+        assert out.get("card_uncertain"), f"{nm} should be flagged card_uncertain"
+    if os.path.exists(photo):           # a real card must NOT be flagged uncertain
+        out = engine.process_bytes(Path(photo).read_bytes())
+        assert not out.get("card_uncertain"), "a real card was wrongly flagged uncertain"
+    print("Non-card guard: walls/paper flagged uncertain, real card is not.")
+
 
 if __name__ == "__main__":
     main()
