@@ -1,0 +1,56 @@
+"""Adversarial-input guard: the web/bot grade path must NEVER crash on a bad upload — it
+must return a clean {ok: False, ...} dict. Caught a real crash (empty bytes threw in
+cv2.imdecode) and bogus grades on 1x1 thumbnails. Run: python3 scripts/test_robustness.py
+"""
+import sys, io
+from pathlib import Path
+import numpy as np
+import cv2
+from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src import engine  # noqa: E402
+
+
+def png(arr):
+    b = io.BytesIO()
+    Image.fromarray(arr).save(b, format="PNG")
+    return b.getvalue()
+
+
+def cases():
+    a = np.random.RandomState(0).randint(0, 255, (800, 600, 3), np.uint8)
+    _, jb = cv2.imencode(".jpg", a)
+    return {
+        "empty bytes": b"",
+        "non-image junk": b"not an image" * 50,
+        "truncated jpeg": jb.tobytes()[:len(jb) // 2],
+        "1x1 px": png(np.zeros((1, 1, 3), np.uint8)),
+        "tiny 8x8": png(np.zeros((8, 8, 3), np.uint8)),
+        "grayscale": png(np.zeros((400, 300), np.uint8)),
+        "rgba": png(np.zeros((400, 300, 4), np.uint8)),
+        "extreme aspect": png(np.zeros((20, 2000, 3), np.uint8)),
+    }
+
+
+def main():
+    bad = []
+    for name, data in cases().items():
+        try:
+            out = engine.process_bytes(data)
+        except Exception as e:
+            bad.append(f"{name}: CRASHED ({type(e).__name__}: {str(e)[:50]})")
+            continue
+        if not (isinstance(out, dict) and "ok" in out):
+            bad.append(f"{name}: returned non-standard {type(out)}")
+            continue
+        # garbage/degenerate inputs must NOT come back as a confident grade
+        if name in ("empty bytes", "non-image junk", "1x1 px", "tiny 8x8") and out.get("ok"):
+            bad.append(f"{name}: should be rejected but ok=True (grade={out.get('grade')})")
+        print(f"  {name:16} -> ok={out.get('ok')} stage={out.get('stage')}")
+    assert not bad, "robustness failures:\n  " + "\n  ".join(bad)
+    print("\nAll adversarial inputs handled cleanly (no crash, no bogus grade).")
+
+
+if __name__ == "__main__":
+    main()

@@ -57,8 +57,13 @@ _MAX_LONG_EDGE = 2200
 
 
 def decode_image(data: bytes) -> Optional[np.ndarray]:
+    if not data:                       # empty upload: imdecode would THROW on an empty buffer
+        return None
     arr = np.frombuffer(data, np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    try:
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    except cv2.error:                  # malformed/garbage bytes can raise instead of returning None
+        return None
     if img is None:
         return None
     h, w = img.shape[:2]
@@ -97,6 +102,14 @@ def process_image(img: np.ndarray, corners=None) -> dict:
     corners (optional): 4 [x, y] points NORMALISED to 0..1, supplied by the
     manual align tool. Converted to pixels and used for the warp.
     """
+    # Too small to hold a gradeable card — reject with a clear message rather than
+    # returning a meaningless grade for a thumbnail / 1x1 / icon.
+    h0, w0 = img.shape[:2]
+    if min(h0, w0) < 120:
+        return {"ok": False, "stage": "too_small",
+                "message": "That image is too small to grade — upload a full-size photo "
+                           "of the card."}
+
     manual = None
     if corners and len(corners) == 4:
         h, w = img.shape[:2]
