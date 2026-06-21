@@ -29,6 +29,16 @@ to TAG-like reliability. Measured with `scripts/grade_testset.py` (30-photo set)
   detects heavy minority-fill scratches (`test_defects.py`: surface 9 → 7). Still runs
   pessimistic on holo/foil and clean cards (mean ~7).
 
+## The existing trained CNN doesn't fix it (yet)
+`data/training/grader.onnx` is wired in (`onnx_grader`, surfaced alongside the heuristic).
+Evaluated on the same reference scans, it shows the **same calibration problem**: clean
+cards score corners 5.3 / edges 4.9 / surface 6.4 mean (centering 8.8 is better but still
+dips to 6.1). On real photos it broadly agrees with the heuristics, including their
+pessimism. So the model as currently trained is **not yet a trustworthy sub-grade source** —
+it needs retraining against real PSA/CGC-labeled photos (and the training labels validated;
+note: `data/card_images` catalog scans are *assumed* near-mint, not verified). Until then,
+keep the CNN inert/alongside, not driving the grade.
+
 ## Why (the root cause)
 TAG/PSA-grade reliability comes mostly from **controlled capture**: a fixed scanner,
 identical lighting every time, very high DPI, and multiple light angles that reveal surface
