@@ -244,6 +244,12 @@ def build_embed(result: dict) -> discord.Embed:
     if result.get("overlay", "").startswith("data:image/png;base64,"):
         emb.set_image(url="attachment://overlay.png")
 
+    # ── capture quality ── a blurry/glare photo grades unreliably; tell them to retake.
+    if result.get("capture_warning"):
+        emb.add_field(name="\U0001f4f7 Photo quality",
+                      value=result["capture_warning"] + " A clearer photo grades more accurately.",
+                      inline=False)
+
     # ── footer ──
     footer = f"\U0001f4c7 {int(result.get('indexed') or 0):,} cards indexed"
     # The uncertain case already has its own field; only surface other warnings here.
