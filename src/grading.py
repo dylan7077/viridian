@@ -669,7 +669,7 @@ def assess_surface(card: np.ndarray) -> dict:
 # --------------------------------------------------------------------------- #
 # Capture quality (garbage-in gate)
 # --------------------------------------------------------------------------- #
-def assess_capture_quality(card: np.ndarray) -> dict:
+def assess_capture_quality(card: np.ndarray, source_card_px: Optional[int] = None) -> dict:
     """Flag a photo too poor to grade reliably, BEFORE trusting any measurement. A blurry
     or glare-blown shot still detects geometrically but yields garbage centering/surface —
     the real reliability killer is bad input, not the algorithm (see FINDINGS.md).
@@ -678,6 +678,9 @@ def assess_capture_quality(card: np.ndarray) -> dict:
       * blur — variance of the Laplacian. Sharp cards run 240-800; out-of-focus drops < 80.
       * glare — fraction of blown, desaturated highlights (holo/lamp glare).
       * exposure — median brightness too dark / washed out.
+      * resolution — `source_card_px` is the card's height in the ORIGINAL photo; below
+        ~700px the grade drifts (detection precision + lost detail), so warn rather than
+        silently grade inconsistently (see the resolution-sensitivity note in FINDINGS).
     ponytail: thresholds calibrated on this warp size; retune if the warp dims change."""
     gray = cv2.cvtColor(card, cv2.COLOR_BGR2GRAY)
     hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
@@ -695,9 +698,12 @@ def assess_capture_quality(card: np.ndarray) -> dict:
         warnings.append("Photo is too dark — use more even light.")
     elif bright > 225:
         warnings.append("Photo is overexposed — reduce the light or move back.")
+    if source_card_px is not None and source_card_px < 700:
+        warnings.append("The card is small/low-resolution in this photo — fill the frame "
+                        "and get closer for a more precise grade.")
     return {"ok": not warnings, "blur": round(blur, 1),
             "glare": round(glare, 3), "brightness": round(bright, 1),
-            "warnings": warnings}
+            "card_px": source_card_px, "warnings": warnings}
 
 
 # --------------------------------------------------------------------------- #
@@ -854,6 +860,16 @@ def grade_card(img: np.ndarray, manual_corners=None) -> GradeResult:
     edges = assess_edges(card)
     surface = assess_surface(card)
     overall = _combine(centering, corners, edges, surface)
+    # Card's height in the ORIGINAL photo (mean of the quad's two vertical sides) — drives
+    # the low-resolution capture warning. None if no quad (manual w/o detection edge cases).
+    card_px = None
+    quad = dbg.get("quad")
+    if quad and len(quad) == 4:
+        try:
+            r = _order_points(np.array(quad, dtype="float32"))   # TL,TR,BR,BL
+            card_px = int(round((np.linalg.norm(r[3] - r[0]) + np.linalg.norm(r[2] - r[1])) / 2))
+        except Exception:
+            card_px = None
     return GradeResult(overall, centering, corners, edges, surface,
                        warped=card, detect_info=dbg,
-                       capture=assess_capture_quality(card))
+                       capture=assess_capture_quality(card, card_px))

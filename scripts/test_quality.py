@@ -45,7 +45,14 @@ def main():
     print(f"too dark:    ok={qd['ok']} bright={qd['brightness']}  -> {qd['warnings']}")
     assert has(qd["warnings"], "dark"), "dark card must raise a darkness warning"
 
-    print("\nCapture gate verified: passes sharp cards, flags blur / glare / darkness.")
+    # low-resolution: a small card in the source photo should warn, a large one shouldn't
+    qlo = grading.assess_capture_quality(base, source_card_px=400)
+    qhi = grading.assess_capture_quality(base, source_card_px=1100)
+    print(f"low-res 400px: -> {qlo['warnings']}")
+    assert has(qlo["warnings"], "low-resolution"), "small card_px must warn low-resolution"
+    assert not has(qhi["warnings"], "low-resolution"), "1100px card must not warn low-res"
+
+    print("\nCapture gate verified: passes good cards, flags blur / glare / darkness / low-res.")
 
 
 if __name__ == "__main__":
