@@ -721,14 +721,15 @@ _TRUST = {"high": 1.0, "medium": 0.65, "low": 0.30}
 
 
 def _combine(centering, corners, edges, surface) -> Optional[int]:
-    """Anchor the overall on the most *reliable* signals, not the lowest.
+    """Anchor the overall on the signals that actually predict condition.
 
-    Centering is the only objective metric; corners/edges/surface are low-confidence
-    heuristics that misfire on holo/foil/full-art and on loose crops. So the overall
-    is a confidence-weighted blend (a low-confidence sub barely moves it), and a
-    low-confidence sub may only pull the grade DOWN — and only on strong evidence of a
-    real defect — never hard-cap it. Only a measured (high/medium-confidence) severe
-    defect caps the grade, which is the honest PSA-style behaviour."""
+    Validated against real labeled cards (scripts/validate_labeled.py): centering and
+    SURFACE separate clean from damaged (surface +2.2 grades), but corner/edge heuristics
+    show ~0 separation (corners -0.1, edges -0.5) — noise that only false-penalises good
+    cards. So corners/edges are excluded from the grade math (still reported as low-conf
+    info via GradeResult); the overall is a confidence-weighted blend of centering (anchor)
+    + surface (down-pull evidence). A low-confidence surface read only pulls DOWN on strong
+    evidence, never hard-caps. `corners`/`edges` args are kept for signature compatibility."""
     cen_conf = centering.get("confidence")
     cen_trust = _TRUST.get(cen_conf, 0.65)
     # Centering only anchors when it's a trustworthy read; a loose-crop centering is
@@ -738,10 +739,12 @@ def _combine(centering, corners, edges, surface) -> Optional[int]:
     subs = []   # (grade, base_weight, trust)
     if centering.get("grade") is not None:
         subs.append((centering["grade"], cen_base, cen_trust))
-    # Physical-wear heuristics — low confidence, used as the only down-pull evidence.
-    wear = [(corners["grade"], 0.25, _TRUST.get(corners.get("confidence"), 0.30)),
-            (edges["grade"],   0.20, _TRUST.get(edges.get("confidence"), 0.30)),
-            (surface["grade"], 0.15, _TRUST.get(surface.get("confidence"), 0.30))]
+    # Corners/edges are EXCLUDED from the grade math. Validated against real labeled cards
+    # (scripts/validate_labeled.py): they show ~0 clean-vs-damaged separation (corners -0.1,
+    # edges -0.5) — pure noise that only false-penalises good cards. They stay REPORTED as
+    # low-confidence info. Surface DOES separate real damage (+2.2 grades, 81% balanced acc),
+    # so it remains the down-pull evidence alongside centering.
+    wear = [(surface["grade"], 0.30, _TRUST.get(surface.get("confidence"), 0.30))]
     subs += wear
 
     wsum = sum(bw * tr for _, bw, tr in subs)

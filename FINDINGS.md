@@ -4,6 +4,18 @@ Evidence-based assessment of what the CV grader can and can't do, and the only r
 to TAG-like reliability. Measured with `scripts/grade_testset.py` (30-photo set) and over
 200/22,020 reference scans in `data/card_images/`.
 
+## Validated against REAL labeled cards (2026-06-21, `scripts/validate_labeled.py`)
+Corrects the earlier "no ground truth" claim — there IS coarse labeled data (clean vs
+damaged) in `~/Documents/card data/`. Measured:
+- **Surface heuristic WORKS**: 49 real surface-damaged fronts vs 30 clean — scuff 0.250 vs
+  0.131, surface grade 6.4 vs 8.6, **+2.2 grade separation** (81% balanced acc at scuff 0.18).
+- **Corner/edge heuristics are NOISE**: clean vs labeled-damaged backs separate by **−0.1
+  (corners) and −0.5 (edges)** — zero predictive signal, confirming the synthetic finding.
+- **Action taken**: `_combine` now EXCLUDES corners/edges from the grade math (still reported
+  as low-conf info) and keeps centering (anchor) + surface (down-pull). Result: overall
+  clean-vs-damaged separation **+1.4 → +1.6**, and clean cards stopped being false-penalised
+  (mean 8.5 → 8.9). Verified offline against the labeled cache.
+
 ## What's reliable
 - **Card detection**: 30/30 photos detected and warped (Hough-primary). Solid.
 - **Centering, L/R axis**: the objective, reproducible metric. Synthetic cards with known
