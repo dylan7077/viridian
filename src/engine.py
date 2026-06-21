@@ -48,9 +48,25 @@ def get_orb_index() -> Optional[OrbIndex]:
     return _orb_index
 
 
+# A 10 MB JPEG can decompress to 50+ megapixels (a "decompression bomb"); OpenCV holds
+# the full array plus working copies, so RAM scales with *pixels*, not file bytes — that's
+# the real OOM lever, not the byte cap. Downscale any decoded image to this long edge before
+# any CV runs. 2200px ≈ ~1500px of card height — plenty for centering + edge-whitening on a
+# phone photo. ponytail: fixed ceiling; raise it only if measurement accuracy demands more.
+_MAX_LONG_EDGE = 2200
+
+
 def decode_image(data: bytes) -> Optional[np.ndarray]:
     arr = np.frombuffer(data, np.uint8)
-    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    h, w = img.shape[:2]
+    longest = max(h, w)
+    if longest > _MAX_LONG_EDGE:
+        s = _MAX_LONG_EDGE / longest
+        img = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
+    return img
 
 
 def _apply_real_graded(value: dict, card: dict, grade) -> None:
