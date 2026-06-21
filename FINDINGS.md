@@ -100,3 +100,12 @@ Offline self-test (no key needed): `python3 scripts/eval_roboflow_grader.py --se
 NOTE: installing `roboflow` swapped opencv-python -> opencv-python-headless in the venv
 (roboflow forces it). Harmless — grader is server-side, cv2 4.10 works, all tests pass; and
 headless is actually leaner for the VPS. requirements.txt unchanged.
+
+## Decision to make: centering leeway (2026-06-21)
+`_centering_to_grade` maps 60/40 -> PSA 10, but strict PSA is 60/40 = 9 (PSA10 = 55/45). The
+repo applies a documented ~5% leeway = slightly generous. Generous grades risk disappointing
+buyers who later submit to PSA and get one grade lower. It's defensible (PSA tolerances are
+"approximately" and graders apply leeway), but it's YOUR call: keep it, or tighten the table in
+grading._centering_to_grade to match PSA exactly. Locked by scripts/test_centering.py so it
+can't drift silently. Identification + price + grade verified working end-to-end (e.g. 1.jpg ->
+"Froakie" Chaos Rising, confident 0.98, grade 10, priced).

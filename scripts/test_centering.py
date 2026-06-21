@@ -68,6 +68,18 @@ def main():
         print("  -> T/B measurement is the weak axis (suspected). This is the fix target.")
     assert lr_ok == n, "L/R centering regressed — this axis must stay accurate."
 
+    # Lock the centering->grade mapping against PSA's published front tolerances.
+    # NOTE the repo applies a documented ~5% leeway, so 60/40 maps to 10 where strict PSA
+    # is 9 (PSA10 = 55/45). This is a deliberate, slightly-generous choice — change the
+    # table in grading._centering_to_grade if you want to match PSA exactly (stricter).
+    print("\ncentering->grade table (worst-axis %):")
+    expect = {50: 10, 55: 10, 60: 10, 65: 9, 70: 8, 75: 7, 80: 6, 85: 5}
+    for worst, want in expect.items():
+        got = grading._centering_to_grade(worst)
+        flag = "ok" if got == want else "CHANGED"
+        print(f"  [{flag}] worst {worst}/{100-worst} -> grade {got} (locked {want})")
+        assert got == want, f"centering grade for {worst} changed: {got} != {want}"
+
 
 if __name__ == "__main__":
     main()
