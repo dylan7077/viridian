@@ -119,19 +119,27 @@ python -m src.cli path/to/card.jpg
 
 Every front-end feeds the same pipeline in `src/engine.py`:
 
+The overall grade is driven by the signals that are **validated against real labeled cards**
+(centering + surface); corners/edges are shown for reference but don't move the grade, because
+on single photos they don't reliably separate clean from damaged (see `FINDINGS.md`).
+
 | Step | What happens | Reliability |
 |------|--------------|-------------|
-| 1. Detect & flatten | Largest 4-point contour → perspective warp to a face-on card (manual corners override it if you align by hand) | solid |
-| 2. Centering | Inner frame located; border ratios mapped to PSA tolerances | **measured** |
-| 3. Corners / edges | "Whitening" (bright, low-saturation pixels) at corners/edges | heuristic |
-| 4. Surface | Blown-highlight / specular proxy | rough heuristic |
-| 5. Trained grader | An ONNX CNN predicts a grade too, shown **alongside** the heuristic (not replacing it) until trusted | experimental |
+| 0. Capture check | Flags blur / glare / bad exposure and asks for a retake before grading garbage | guards quality |
+| 1. Detect & flatten | Hough-line / contour detection → perspective warp to a face-on card (manual corners override it if you align by hand) | solid |
+| 2. Centering | Inner frame located; border ratios mapped to PSA tolerances | **measured · counts** |
+| 3. Surface | Scratch/scuff density (top-hat) — validated to separate real surface damage by ~2 grades | rough · **counts** |
+| 4. Corners / edges | "Whitening" at corners/edges — **reported for reference only**, excluded from the grade (non-predictive on single photos) | experimental |
+| 5. Trained grader | An ONNX CNN predicts a grade too, shown **alongside** (not replacing) — not yet trusted (mis-calibrated, needs retraining on labeled photos) | experimental |
 | 6. Identify | pHash narrows ~20k cards to a shortlist, then ORB feature matching confirms the exact card — or honestly says "couldn't match" rather than guessing | robust to phone photos |
 | 7. Re-measure centering | Once identified, centering is re-measured against the card's clean reference image — reliable even on holo / full-art | **measured** |
 | 8. Slab shortcut | If it's a sealed PSA slab, OCR reads the printed grade and skips re-grading | authoritative |
 | 9. Value | pokemontcg.io market price × grade multiplier, overridden by **real graded sold-comps** (eBay / Cardmarket) when available | ballpark → real |
 
 Tune match strictness with `MATCH_MAX_DISTANCE` / ORB settings in `.env`.
+
+Run `python3 scripts/test_*.py` to verify the pipeline (centering, surface, capture gate,
+robustness) and `scripts/validate_labeled.py` to re-check accuracy against labeled cards.
 
 ---
 
