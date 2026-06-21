@@ -207,8 +207,13 @@ def process_image(img: np.ndarray, corners=None) -> dict:
         except Exception:
             pass
         if cid:
-            out["value"] = pricing.get_card_value(cid, price_grade)
-            _apply_real_graded(out["value"], c, price_grade)
+            # Pricing is a network call and a bonus, not the product — never let it turn a
+            # successful grade into a 500. On any failure the grade still returns (value=None).
+            try:
+                out["value"] = pricing.get_card_value(cid, price_grade)
+                _apply_real_graded(out["value"], c, price_grade)
+            except Exception:
+                pass
 
     def _unsure(guess_card=None):
         """Explain *why* we couldn't identify and how to fix it — never guess.

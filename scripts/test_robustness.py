@@ -51,6 +51,22 @@ def main():
     assert not bad, "robustness failures:\n  " + "\n  ".join(bad)
     print("\nAll adversarial inputs handled cleanly (no crash, no bogus grade).")
 
+    # Dependency-failure resilience: a price-API outage (bad wifi at a sale) must NOT break
+    # an otherwise-successful grade — pricing is a bonus, the grade is the product.
+    import os
+    from src import pricing
+    photo = os.path.expanduser("~/Documents/1.jpg")
+    if os.path.exists(photo):
+        orig = pricing.get_card_value
+        pricing.get_card_value = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("api down"))
+        try:
+            out = engine.process_bytes(Path(photo).read_bytes())
+        finally:
+            pricing.get_card_value = orig
+        assert out.get("ok") and out.get("grade", {}).get("overall") is not None, \
+            "grade must survive a pricing outage"
+        print("Pricing-outage resilience: grade still returns (value degrades to None).")
+
 
 if __name__ == "__main__":
     main()
