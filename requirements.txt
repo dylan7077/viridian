@@ -8,6 +8,7 @@ python-dotenv>=1.0
 
 # --- Discord front-end ---
 discord.py>=2.3,<3
+aiohttp>=3.9              # bot.py: posts photos to the web /api/grade endpoint (hard import)
 
 # --- web front-end ---
 fastapi>=0.110
@@ -19,3 +20,6 @@ pytesseract>=0.3
 # SQLite locally; set DATABASE_URL to a Postgres URL in production.
 SQLAlchemy>=2.0
 psycopg2-binary>=2.9       # Postgres driver (used when DATABASE_URL is postgresql://)
+
+# --- optional: trained CNN grade (onnx_grader.py is inert without it) ---
+onnxruntime>=1.17          # optional; the CNN path self-disables if not installed

@@ -166,9 +166,10 @@ function buildVerdict(r, g, c, overall) {
   if (edges != null)   proChips.push(`edges ${edges}`);
   if (surface != null) proChips.push(`surface ${surface}`);
 
-  // identify the heavy hitters
-  const wear = [corners, edges, surface].filter(v => v != null && v <= 6).length;
-  if (wear > 0) conChips.push(`${wear} weak sub-grade${wear > 1 ? "s" : ""}`);
+  // Wear that counts toward the grade = surface only (corners/edges are non-predictive
+  // noise on single photos — see FINDINGS.md — so they don't drive the verdict either).
+  const wear = (surface != null && surface <= 6) ? 1 : 0;
+  if (wear > 0) conChips.push(`surface wear`);
 
   if (overall >= 9) proChips.push(`overall ${overall}`);
   else if (overall != null && overall <= 6) conChips.push(`overall ${overall}`);
@@ -190,6 +191,7 @@ function buildVerdict(r, g, c, overall) {
     }
   }
 
+  if (r.capture_warning) conChips.push("photo quality");
   if (r.detection_warning) conChips.push("detection warn");
   if (r.match_warning) conChips.push("match warn");
 
@@ -208,7 +210,7 @@ function buildVerdict(r, g, c, overall) {
   }
 
   if (overall != null && overall <= 5) {
-    conLine = `Heavy wear showing — corners, edges, and surface all took a beating.`;
+    conLine = `Real wear here — surface condition and centering are dragging the grade down.`;
   } else if (centeringCon) {
     conLine = `Off-center print is the grade-killer here.`;
   } else if (wear > 0) {
@@ -350,18 +352,19 @@ function render(r) {
     </figure>`;
   }
 
+  if (r.capture_warning) html += `<div class="banner warn">📷 ${r.capture_warning} A clearer photo grades more accurately.</div>`;
   if (r.detection_warning) html += `<div class="banner warn">${r.detection_warning}</div>`;
   if (r.match_warning) html += `<div class="banner warn">${r.match_warning}</div>`;
 
   if (c.ok) html += centeringDiagram(c);
 
   html += `<div class="subgrades">
-    ${bar("Centering", c.ok ? c.grade : null, false, c.ok ? "measured" : "could not measure")}
-    ${bar("Corners", g.corners.grade, true)}
-    ${bar("Edges", g.edges.grade, true)}
-    ${bar("Surface", g.surface.grade, true)}
+    ${bar("Centering", c.ok ? c.grade : null, false, c.ok ? (c.confidence === "low" ? "low confidence — reshoot flat" : "measured · counts") : "could not measure")}
+    ${bar("Surface", g.surface.grade, true, "rough · counts")}
+    ${bar("Corners", g.corners.grade, true, "experimental")}
+    ${bar("Edges", g.edges.grade, true, "experimental")}
   </div>
-  <p class="sg-note" style="margin-bottom:18px">Centering is measured; corners, edges and surface are heuristic estimates.</p>`;
+  <p class="sg-note" style="margin-bottom:18px">The grade is driven by <b>centering</b> (measured) and <b>surface</b> (validated on real cards). Corners &amp; edges are shown for reference only — single-photo heuristics aren't reliable enough to count toward the grade.</p>`;
 
   if (r.match) {
     const card = r.match.card;

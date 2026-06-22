@@ -48,9 +48,30 @@ def get_orb_index() -> Optional[OrbIndex]:
     return _orb_index
 
 
+# A 10 MB JPEG can decompress to 50+ megapixels (a "decompression bomb"); OpenCV holds
+# the full array plus working copies, so RAM scales with *pixels*, not file bytes — that's
+# the real OOM lever, not the byte cap. Downscale any decoded image to this long edge before
+# any CV runs. 2200px ≈ ~1500px of card height — plenty for centering + edge-whitening on a
+# phone photo. ponytail: fixed ceiling; raise it only if measurement accuracy demands more.
+_MAX_LONG_EDGE = 2200
+
+
 def decode_image(data: bytes) -> Optional[np.ndarray]:
+    if not data:                       # empty upload: imdecode would THROW on an empty buffer
+        return None
     arr = np.frombuffer(data, np.uint8)
-    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    try:
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    except cv2.error:                  # malformed/garbage bytes can raise instead of returning None
+        return None
+    if img is None:
+        return None
+    h, w = img.shape[:2]
+    longest = max(h, w)
+    if longest > _MAX_LONG_EDGE:
+        s = _MAX_LONG_EDGE / longest
+        img = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
+    return img
 
 
 def _apply_real_graded(value: dict, card: dict, grade) -> None:
@@ -81,6 +102,14 @@ def process_image(img: np.ndarray, corners=None) -> dict:
     corners (optional): 4 [x, y] points NORMALISED to 0..1, supplied by the
     manual align tool. Converted to pixels and used for the warp.
     """
+    # Too small to hold a gradeable card — reject with a clear message rather than
+    # returning a meaningless grade for a thumbnail / 1x1 / icon.
+    h0, w0 = img.shape[:2]
+    if min(h0, w0) < 120:
+        return {"ok": False, "stage": "too_small",
+                "message": "That image is too small to grade — upload a full-size photo "
+                           "of the card."}
+
     manual = None
     if corners and len(corners) == 4:
         h, w = img.shape[:2]
@@ -109,9 +138,14 @@ def process_image(img: np.ndarray, corners=None) -> dict:
         "match": None,
         "value": None,
         "detection": result.detect_info,
+        "capture": result.capture,
         "overlay": _to_data_uri(grading.annotate_detection(
             result.warped, result.centering, result.corners, result.edges)),
     }
+    # Warn on a poor-quality photo (blur / glare / exposure) — the grade is only as good
+    # as the input, so tell the user to retake rather than silently grading garbage.
+    if result.capture and not result.capture.get("ok", True):
+        out["capture_warning"] = " ".join(result.capture.get("warnings", []))
 
     # Trained CNN prediction (ONNX, fast CPU). Surfaced ALONGSIDE the heuristic grade for
     # now — not replacing it — until the model is trusted. Inert if the model isn't present.
@@ -122,8 +156,21 @@ def process_image(img: np.ndarray, corners=None) -> dict:
     except Exception:
         pass
 
-    cov = result.detect_info.get("coverage", 1.0)
-    if cov < 0.20:
+    di0 = result.detect_info or {}
+    cov = di0.get("coverage", 1.0)
+    method = di0.get("method")
+    fit = di0.get("aspect_fit", 1.0)
+    quality = di0.get("quality")
+    # "Is this even a card?" guard. A non-card photo (wall, paper, object) still produces a
+    # grade because detection falls back to the whole frame — embarrassing in a demo. The
+    # detector already flags these: method 'fullframe' = nothing found; or a low-quality,
+    # non-card-shaped (low aspect_fit) detection. Warn honestly; real cards are quality=good.
+    if method == "fullframe" or (quality == "low" and fit < 0.55):
+        out["detection_warning"] = (
+            "Couldn't clearly find a card in this photo — this grade may not be meaningful. "
+            "Make sure the whole card is visible, flat, against a contrasting background.")
+        out["card_uncertain"] = True
+    elif cov < 0.20:
         out["detection_warning"] = (
             f"Only {cov:.0%} of the photo was identified as the card — it may be "
             "cropped or zoomed in. Frame the whole card with a margin around it.")
@@ -173,8 +220,13 @@ def process_image(img: np.ndarray, corners=None) -> dict:
         except Exception:
             pass
         if cid:
-            out["value"] = pricing.get_card_value(cid, price_grade)
-            _apply_real_graded(out["value"], c, price_grade)
+            # Pricing is a network call and a bonus, not the product — never let it turn a
+            # successful grade into a 500. On any failure the grade still returns (value=None).
+            try:
+                out["value"] = pricing.get_card_value(cid, price_grade)
+                _apply_real_graded(out["value"], c, price_grade)
+            except Exception:
+                pass
 
     def _unsure(guess_card=None):
         """Explain *why* we couldn't identify and how to fix it — never guess.

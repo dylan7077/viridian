@@ -667,6 +667,46 @@ def assess_surface(card: np.ndarray) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Capture quality (garbage-in gate)
+# --------------------------------------------------------------------------- #
+def assess_capture_quality(card: np.ndarray, source_card_px: Optional[int] = None) -> dict:
+    """Flag a photo too poor to grade reliably, BEFORE trusting any measurement. A blurry
+    or glare-blown shot still detects geometrically but yields garbage centering/surface —
+    the real reliability killer is bad input, not the algorithm (see FINDINGS.md).
+
+    Measured on the fixed-size warped card so thresholds are stable across photos:
+      * blur — variance of the Laplacian. Sharp cards run 240-800; out-of-focus drops < 80.
+      * glare — fraction of blown, desaturated highlights (holo/lamp glare).
+      * exposure — median brightness too dark / washed out.
+      * resolution — `source_card_px` is the card's height in the ORIGINAL photo; below
+        ~700px the grade drifts (detection precision + lost detail), so warn rather than
+        silently grade inconsistently (see the resolution-sensitivity note in FINDINGS).
+    ponytail: thresholds calibrated on this warp size; retune if the warp dims change."""
+    gray = cv2.cvtColor(card, cv2.COLOR_BGR2GRAY)
+    hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
+    v, s = hsv[:, :, 2], hsv[:, :, 1]
+    blur = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    glare = float(((v > 250) & (s < 30)).mean())
+    bright = float(np.median(v))
+
+    warnings = []
+    if blur < 60:
+        warnings.append("Photo looks out of focus — hold steady and retake.")
+    if glare > 0.03:
+        warnings.append("Glare is washing out part of the card — tilt away from the light.")
+    if bright < 45:
+        warnings.append("Photo is too dark — use more even light.")
+    elif bright > 225:
+        warnings.append("Photo is overexposed — reduce the light or move back.")
+    if source_card_px is not None and source_card_px < 700:
+        warnings.append("The card is small/low-resolution in this photo — fill the frame "
+                        "and get closer for a more precise grade.")
+    return {"ok": not warnings, "blur": round(blur, 1),
+            "glare": round(glare, 3), "brightness": round(bright, 1),
+            "card_px": source_card_px, "warnings": warnings}
+
+
+# --------------------------------------------------------------------------- #
 # Combined result
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -679,6 +719,7 @@ class GradeResult:
     detected: bool = True
     warped: Optional[np.ndarray] = field(default=None, repr=False)
     detect_info: dict = field(default_factory=dict)
+    capture: dict = field(default_factory=dict)
 
 
 # How much to trust a sub-grade by its stated confidence.
@@ -686,14 +727,15 @@ _TRUST = {"high": 1.0, "medium": 0.65, "low": 0.30}
 
 
 def _combine(centering, corners, edges, surface) -> Optional[int]:
-    """Anchor the overall on the most *reliable* signals, not the lowest.
+    """Anchor the overall on the signals that actually predict condition.
 
-    Centering is the only objective metric; corners/edges/surface are low-confidence
-    heuristics that misfire on holo/foil/full-art and on loose crops. So the overall
-    is a confidence-weighted blend (a low-confidence sub barely moves it), and a
-    low-confidence sub may only pull the grade DOWN — and only on strong evidence of a
-    real defect — never hard-cap it. Only a measured (high/medium-confidence) severe
-    defect caps the grade, which is the honest PSA-style behaviour."""
+    Validated against real labeled cards (scripts/validate_labeled.py): centering and
+    SURFACE separate clean from damaged (surface +2.2 grades), but corner/edge heuristics
+    show ~0 separation (corners -0.1, edges -0.5) — noise that only false-penalises good
+    cards. So corners/edges are excluded from the grade math (still reported as low-conf
+    info via GradeResult); the overall is a confidence-weighted blend of centering (anchor)
+    + surface (down-pull evidence). A low-confidence surface read only pulls DOWN on strong
+    evidence, never hard-caps. `corners`/`edges` args are kept for signature compatibility."""
     cen_conf = centering.get("confidence")
     cen_trust = _TRUST.get(cen_conf, 0.65)
     # Centering only anchors when it's a trustworthy read; a loose-crop centering is
@@ -703,10 +745,12 @@ def _combine(centering, corners, edges, surface) -> Optional[int]:
     subs = []   # (grade, base_weight, trust)
     if centering.get("grade") is not None:
         subs.append((centering["grade"], cen_base, cen_trust))
-    # Physical-wear heuristics — low confidence, used as the only down-pull evidence.
-    wear = [(corners["grade"], 0.25, _TRUST.get(corners.get("confidence"), 0.30)),
-            (edges["grade"],   0.20, _TRUST.get(edges.get("confidence"), 0.30)),
-            (surface["grade"], 0.15, _TRUST.get(surface.get("confidence"), 0.30))]
+    # Corners/edges are EXCLUDED from the grade math. Validated against real labeled cards
+    # (scripts/validate_labeled.py): they show ~0 clean-vs-damaged separation (corners -0.1,
+    # edges -0.5) — pure noise that only false-penalises good cards. They stay REPORTED as
+    # low-confidence info. Surface DOES separate real damage (+2.2 grades, 81% balanced acc),
+    # so it remains the down-pull evidence alongside centering.
+    wear = [(surface["grade"], 0.30, _TRUST.get(surface.get("confidence"), 0.30))]
     subs += wear
 
     wsum = sum(bw * tr for _, bw, tr in subs)
@@ -816,5 +860,16 @@ def grade_card(img: np.ndarray, manual_corners=None) -> GradeResult:
     edges = assess_edges(card)
     surface = assess_surface(card)
     overall = _combine(centering, corners, edges, surface)
+    # Card's height in the ORIGINAL photo (mean of the quad's two vertical sides) — drives
+    # the low-resolution capture warning. None if no quad (manual w/o detection edge cases).
+    card_px = None
+    quad = dbg.get("quad")
+    if quad and len(quad) == 4:
+        try:
+            r = _order_points(np.array(quad, dtype="float32"))   # TL,TR,BR,BL
+            card_px = int(round((np.linalg.norm(r[3] - r[0]) + np.linalg.norm(r[2] - r[1])) / 2))
+        except Exception:
+            card_px = None
     return GradeResult(overall, centering, corners, edges, surface,
-                       warped=card, detect_info=dbg)
+                       warped=card, detect_info=dbg,
+                       capture=assess_capture_quality(card, card_px))

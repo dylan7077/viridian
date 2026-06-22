@@ -39,7 +39,11 @@ def _usd_market(pricing: dict) -> Optional[float]:
 
 def _eur_market(pricing: dict) -> Optional[float]:
     cm = pricing.get("cardmarket") or {}
-    for k in ("avg", "trend", "avg7", "avg30"):
+    # Prefer CURRENT market value over the all-time average. Cardmarket `avg` is the all-time
+    # mean sell price, which badly understates appreciated vintage (base Charizard: avg €513
+    # vs trend €687). `trend` is the current price; avg30/avg7 are recent; `avg` is the stale
+    # last resort.
+    for k in ("trend", "avg30", "avg7", "avg"):
         if cm.get(k):
             return float(cm[k])
     return None

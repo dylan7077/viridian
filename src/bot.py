@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 
 import aiohttp
 import discord
 
 import config
+
+log = logging.getLogger("viridian.bot")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -244,6 +247,12 @@ def build_embed(result: dict) -> discord.Embed:
     if result.get("overlay", "").startswith("data:image/png;base64,"):
         emb.set_image(url="attachment://overlay.png")
 
+    # ── capture quality ── a blurry/glare photo grades unreliably; tell them to retake.
+    if result.get("capture_warning"):
+        emb.add_field(name="\U0001f4f7 Photo quality",
+                      value=result["capture_warning"] + " A clearer photo grades more accurately.",
+                      inline=False)
+
     # ── footer ──
     footer = f"\U0001f4c7 {int(result.get('indexed') or 0):,} cards indexed"
     # The uncertain case already has its own field; only surface other warnings here.
@@ -337,11 +346,15 @@ async def on_message(message: discord.Message):
                             f"welcome to the **PSA 10 Club**! 🎉")
             except Exception:
                 pass
-        except Exception as e:
+        except Exception:
+            # Log the real error (with traceback) server-side; show users a clean message
+            # rather than leaking raw exception text / internal paths into a public channel.
+            log.exception("grade request failed for message %s", getattr(message, "id", "?"))
             await message.reply(
                 embed=discord.Embed(
                     title="Something went wrong",
-                    description=f"```\n{e}\n```\nTry a different photo or check back later.",
+                    description="Couldn't grade that one — try a clearer, flatter photo "
+                                "of the whole card, or check back in a moment.",
                     color=0xE5736B),
                 mention_author=False)
 
