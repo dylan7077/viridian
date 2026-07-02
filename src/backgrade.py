@@ -83,6 +83,85 @@ def _assess_edges(card: np.ndarray, white: np.ndarray) -> dict:
             "per_edge": [round(x, 3) for x in wear], "confidence": "low"}
 
 
+def assess_back_defects(back_card: np.ndarray) -> Optional[dict]:
+    """Reference-difference whitening/flaw read for the back: align the canonical back,
+    then flag pixels that LOST the saturation the reference has there (real white wear),
+    which cancels the inherently-light printed design (white Poké Ball, light swirls are
+    light in the reference too). Cleaner than the blind white-on-blue mask and yields a
+    flaw overlay. Returns front-shaped corners/edges/surface + overlay, or None if the
+    back can't be aligned confidently."""
+    ref = _back_ref()
+    if ref is None:
+        return None
+    H, inliers = refgrade._homography(ref, back_card)
+    if H is None or inliers < 25:
+        return None
+    h, w = config.CARD_H, config.CARD_W
+    Hinv = np.linalg.inv(H)
+    user_w = cv2.warpPerspective(back_card, Hinv, (w, h))
+    cover = cv2.warpPerspective(np.full(back_card.shape[:2], 255, np.uint8), Hinv, (w, h)) > 200
+    if cover.mean() < 0.7:
+        return None
+    hu = cv2.cvtColor(user_w, cv2.COLOR_BGR2HSV)
+    hr = cv2.cvtColor(ref, cv2.COLOR_BGR2HSV)
+    su, vu = hu[..., 1].astype(np.int16), hu[..., 2].astype(np.int16)
+    sr, vr = hr[..., 1].astype(np.int16), hr[..., 2].astype(np.int16)
+    k5 = np.ones((5, 5), np.uint8)
+    # Whitening: photo lost the saturation the reference has here AND is bright. Compare
+    # against the LEAST-saturated reference pixel in the 5x5 neighbourhood (erode) so a
+    # 1-2px misalignment at a swirl edge can't false-positive — only genuine colour loss
+    # (below even the dimmest nearby reference) survives.
+    sr_lo = cv2.erode(sr.astype(np.uint8), k5).astype(np.int16)
+    white = (su < sr_lo - 30) & (su < 65) & (vu > 120) & cover
+    # Dark damage: markedly darker than the (exposure-matched) reference — dirt/crease.
+    mu, mr = float(np.median(vu[cover])), float(np.median(vr[cover]))
+    vu_n = np.clip(vu * (mr / mu), 0, 255).astype(np.int16) if mu > 1 else vu
+    vr_lo = cv2.erode(vr.astype(np.uint8), k5).astype(np.int16)
+    dark = (vu_n < vr_lo - 70) & cover
+    defect = white | dark
+    # Surface scuff: photo-only bright top-hat features, reference design cancelled.
+    gu = cv2.cvtColor(user_w, cv2.COLOR_BGR2GRAY)
+    gr = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY)
+    kk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    scuff = ((cv2.morphologyEx(gu, cv2.MORPH_TOPHAT, kk) > 30)
+             & (cv2.dilate(cv2.morphologyEx(gr, cv2.MORPH_TOPHAT, kk), k5) < 18) & cover)
+
+    sz, r = int(min(h, w) * 0.09), int(min(h, w) * 0.055)
+    base = grading._rounded_corner_mask(sz, r)
+    cmasks = [base, base[:, ::-1], base[::-1, :], base[::-1, ::-1]]
+    spots = [(0, 0), (w - sz, 0), (0, h - sz), (w - sz, h - sz)]
+
+    def frac(m, ys, xs, region=None):
+        cov = cover[ys, xs] if region is None else (cover[ys, xs] & region)
+        n = int(cov.sum())
+        return float((m[ys, xs] & cov).sum()) / n if n > 50 else 0.0
+
+    corner_fr = [frac(defect, slice(y, y + sz), slice(x, x + sz), mk)
+                 for (x, y), mk in zip(spots, cmasks)]
+    o, t = int(min(h, w) * 0.015), int(min(h, w) * 0.035)
+    strips = [(slice(o, o + t), slice(None)), (slice(h - o - t, h - o), slice(None)),
+              (slice(None), slice(o, o + t)), (slice(None), slice(w - o - t, w - o))]
+    edge_fr = [frac(defect, ys, xs) for ys, xs in strips]
+    inner = (slice(int(h * 0.10), int(h * 0.90)), slice(int(w * 0.08), int(w * 0.92)))
+    surf_fr = frac(scuff | dark, *inner)
+
+    overlay = refgrade._defect_overlay(user_w, defect, scuff, corner_fr, edge_fr, spots, sz, strips)
+    conf = "high" if inliers >= 60 else "medium"
+    T = refgrade
+    return {
+        "overlay_img": overlay,
+        "corners": {"grade": T._ref_frac_to_grade(max(corner_fr), T._REF_CORNER_THR),
+                    "per_corner": [round(x, 4) for x in corner_fr],
+                    "confidence": conf, "method": "reference-back"},
+        "edges": {"grade": T._ref_frac_to_grade(max(edge_fr), T._REF_EDGE_THR),
+                  "per_edge": [round(x, 4) for x in edge_fr],
+                  "confidence": conf, "method": "reference-back"},
+        "surface": {"grade": T._ref_frac_to_grade(surf_fr, T._REF_SURF_THR),
+                    "scuff": round(surf_fr, 4), "confidence": conf, "method": "reference-back"},
+        "inliers": inliers,
+    }
+
+
 def grade_back(back_card: np.ndarray) -> dict:
     """Grade a warped back image: centering (aligned to the canonical back) plus
     edge/corner whitening and surface, measured against the uniform blue field.
@@ -93,10 +172,20 @@ def grade_back(back_card: np.ndarray) -> dict:
     centering = refgrade.measure_centering(back_card, ref) if ref is not None else None
     if centering:
         centering["method"] = "reference-back"
+    no_center = {"ok": False, "grade": None, "note": "Couldn't align the back to the reference."}
+    # Preferred: reference-difference whitening (cancels the printed swirl/logo) + a flaw
+    # overlay. Falls back to the blind white-on-blue mask when the back won't align.
+    d = assess_back_defects(back_card)
+    if d:
+        return {
+            "centering": centering or no_center,
+            "corners": d["corners"], "edges": d["edges"],
+            "surface": grading.assess_surface(back_card),   # keep the validated blind surface
+            "overlay_img": d["overlay_img"],
+        }
     white = _white_mask(back_card)
     return {
-        "centering": centering or {"ok": False, "grade": None,
-                                   "note": "Couldn't align the back to the reference."},
+        "centering": centering or no_center,
         "corners": _assess_corners(back_card, white),
         "edges": _assess_edges(back_card, white),
         "surface": grading.assess_surface(back_card),   # top-hat scuff on the uniform back

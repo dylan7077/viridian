@@ -439,12 +439,20 @@ function render(r) {
       </figure>`;
     }
     if (r.back_capture_warning) html += `<div class="banner warn">📷 ${r.back_capture_warning} A clearer back photo grades more accurately.</div>`;
+    const backRef = gb.corners && gb.corners.method === "reference-back";
     html += `<div class="subgrades">
       ${bar("Centering", bc.ok ? bc.grade : null, false, bc.ok ? "measured · counts" : "could not align the back")}
       ${bar("Surface", gb.surface.grade, true, "rough · counts")}
-      ${bar("Corners", gb.corners.grade, true, "whitening")}
-      ${bar("Edges", gb.edges.grade, true, "whitening")}
+      ${bar("Corners", gb.corners.grade, !backRef, backRef ? "measured · counts" : "whitening")}
+      ${bar("Edges", gb.edges.grade, !backRef, backRef ? "measured · counts" : "whitening")}
     </div>`;
+    if (r.back_defect_overlay) {
+      html += `<figure class="overlay-fig">
+        <img class="overlay-img" src="${r.back_defect_overlay}" alt="Back flaw map" />
+        <figcaption><b>Back report</b> — whitening measured against the reference back (the design cancels) ·
+          <span style="color:#e05a5a">red = whitening / damage</span> · each corner graded</figcaption>
+      </figure>`;
+    }
     if (g.front_overall != null && gb.overall != null) {
       const worse = gb.overall < g.front_overall ? " (the back)" : (g.front_overall < gb.overall ? " (the front)" : "");
       html += `<p class="sg-note" style="margin-bottom:18px">Front grades <b>${g.front_overall}</b>, back grades <b>${gb.overall}</b> — your overall <b>${overall}</b> is the worse side${worse}.</p>`;

@@ -245,6 +245,9 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
                                "well-lit shot of the whole card back on a contrasting "
                                "background."}
         back = backgrade.grade_back(bres.warped)
+        back_ov = back.pop("overlay_img", None)   # reference-difference back flaw map
+        if back_ov is not None:
+            out["back_defect_overlay"] = _to_data_uri(back_ov)
         back_overall = grading._combine(back["centering"], back["corners"],
                                         back["edges"], back["surface"])
         out["grade"]["back"] = {
