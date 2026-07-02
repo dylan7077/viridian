@@ -486,3 +486,12 @@ body.cam-open { overflow: hidden; }
 }
 .back-report-h { margin: 0 0 12px; font-size: 15px; color: var(--text); letter-spacing: .02em; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* match-confidence chip + price source tag */
+.conf-chip {
+  display: inline-block; margin-left: 8px; padding: 2px 9px;
+  font-size: 0.72rem; letter-spacing: .04em; border-radius: 999px;
+  background: rgba(52, 224, 161, 0.12); color: var(--accent, #34e0a1);
+  border: 1px solid rgba(52, 224, 161, 0.35); vertical-align: 1px;
+}
+.v-src { font-size: 0.68rem; opacity: 0.6; margin-left: 6px; }

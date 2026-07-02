@@ -25,7 +25,8 @@ const backPreview = $("#backPreview");
 const backTakeBtn = $("#backTakePhoto");
 
 function updateAnalyzeEnabled() {
-  analyzeBtn.disabled = !(selectedFile && backFile);
+  // Back photo is encouraged (two-sided PSA-style grade) but never blocks a grade.
+  analyzeBtn.disabled = !selectedFile;
 }
 function setBackFile(file) {
   if (!file || !file.type.startsWith("image/")) return;
@@ -126,7 +127,7 @@ dropzone.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
 analyzeBtn.addEventListener("click", analyze);
 
 async function analyze() {
-  if (!selectedFile || !backFile) return;
+  if (!selectedFile) return;
   resultPanel.hidden = false;
   resultBody.innerHTML = `
     <div class="scanner"><img src="${preview.src}" alt="" /><div class="scan-line"></div></div>
@@ -138,7 +139,7 @@ async function analyze() {
   fd.append("file", selectedFile);
   const cn = window.Crop && Crop.corners();
   if (cn) fd.append("corners", JSON.stringify(cn));
-  fd.append("back_file", backFile);
+  if (backFile) fd.append("back_file", backFile);
   try {
     const res = await fetch("/api/grade", { method: "POST", body: fd });
     render(await res.json());
@@ -206,10 +207,11 @@ function buildVerdict(r, g, c, overall) {
   else if (overall != null && overall <= 6) conChips.push(`overall ${overall}`);
 
   if (r.match && r.match.card) proChips.push(r.match.card.name);
-  if (r.match && r.match.score != null) {
-    const pct = Math.round(r.match.score * 100);
-    if (r.match.score >= 0.75) proChips.push(`match ${pct}%`);
-    else if (r.match.score < 0.5) conChips.push(`match ${pct}%`);
+  const mconf = r.match && (r.match.confidence != null ? r.match.confidence : r.match.score);
+  if (mconf != null) {
+    const pct = Math.round(mconf * 100);
+    if (mconf >= 0.75) proChips.push(`match ${pct}%`);
+    else if (mconf < 0.5) conChips.push(`match ${pct}%`);
   }
 
   if (r.value && r.value.ok && r.value.values && r.value.values[0]) {
@@ -421,6 +423,8 @@ function render(r) {
       html += `<p class="sg-note" style="margin-bottom:18px">Front grades <b>${g.front_overall}</b>, back grades <b>${gb.overall}</b> — your overall <b>${overall}</b> is the worse side${worse}.</p>`;
     }
     html += `</div>`;
+  } else if (!slabbed) {
+    html += `<p class="sg-note">🂠 Front-only grade — add a <b>back photo</b> for the full two-sided grade (back whitening is where most cards lose it).</p>`;
   }
 
   if (r.match) {
@@ -429,7 +433,11 @@ function render(r) {
     html += `
       <div class="holo-card ${isHolo ? "holo-on" : ""}" id="holo"><img src="${card.image}" alt="${card.name}" /></div>
       <p class="card-caption"><strong>${card.name}</strong> · ${card.set} #${card.number}
-        ${card.rarity ? "· " + card.rarity : ""}</p>`;
+        ${card.rarity ? "· " + card.rarity : ""}
+        ${r.match.confidence != null ? `<span class="conf-chip">🎯 ${Math.round(r.match.confidence * 100)}% match</span>` : ""}</p>`;
+    if (r.match.print_uncertain) {
+      html += `<p class="sg-note">⚠️ This artwork exists in several sets — the exact print (and its price) may differ.</p>`;
+    }
   }
 
   const v = r.value;
@@ -439,11 +447,14 @@ function render(r) {
     const note = !graded ? "Raw market value"
       : real ? `Real graded price · ${v.graded_source || "PSA sold data"}`
       : `Estimated value at grade ${overall} · no graded sales data, estimate shown`;
-    html += `<p class="sg-note" style="margin:14px 0 4px">${note} · USD / EUR / GBP</p>`;
-    v.values.forEach((x, i) => {
+    html += `<p class="sg-note" style="margin:14px 0 4px">${note} · GBP first</p>`;
+    // GBP leads — it's the number a UK user acts on.
+    const ordered = [...v.values].sort((a, b) => (a.currency !== "GBP") - (b.currency !== "GBP"));
+    ordered.forEach((x, i) => {
       const val = graded ? x.graded : x.raw;
+      const src = x.source ? ` <span class="v-src">${x.source}</span>` : "";
       html += `<div class="kv"><span class="k">${x.currency}</span>
-        <span class="v ${i === 0 ? "value-big" : ""}">${x.symbol}${val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>`;
+        <span class="v ${i === 0 ? "value-big" : ""}">${x.symbol}${val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}${src}</span></div>`;
     });
   }
 
