@@ -411,6 +411,13 @@ function render(r) {
         <span style="color:#e0a94a">amber = surface scuff</span></figcaption>
     </figure>`;
   }
+  if (r.surface_scan_overlay) {
+    html += `<figure class="overlay-fig">
+      <img class="overlay-img" src="${r.surface_scan_overlay}" alt="Surface depth scan" />
+      <figcaption><b>Surface scan</b> — depth read from a multi-angle tilt capture ·
+        <span style="color:#28d0e0">cyan = surface catches light abnormally</span> (scratches, dents, print lines)</figcaption>
+    </figure>`;
+  }
 
   // ── Back of card (when a back photo was graded) ──────────────────────────
   const gb = g.back;
