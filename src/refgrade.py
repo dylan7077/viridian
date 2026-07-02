@@ -168,12 +168,16 @@ def assess_defects(user_card: np.ndarray, ref: np.ndarray) -> Optional[dict]:
     defect = white | dark
 
     # Surface: photo-only small bright features (scratch/scuff), print cancelled.
+    # Multi-scale top-hat — a fixed kernel only catches scuffs near its own size; three
+    # scales catch fine hairlines (5px) through broad scuffing (15px) the single 9px missed.
     gu = cv2.cvtColor(user_w, cv2.COLOR_BGR2GRAY)
     gr_ = cv2.cvtColor(ref_w, cv2.COLOR_BGR2GRAY)
-    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-    th_u = cv2.morphologyEx(gu, cv2.MORPH_TOPHAT, k)
-    th_r = cv2.dilate(cv2.morphologyEx(gr_, cv2.MORPH_TOPHAT, k), k5)
-    scuff_map = (th_u > 30) & (th_r < 18) & cover
+    scuff_map = np.zeros((h, w), bool)
+    for ks in (5, 9, 15):
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ks, ks))
+        tu = cv2.morphologyEx(gu, cv2.MORPH_TOPHAT, k)
+        tr = cv2.dilate(cv2.morphologyEx(gr_, cv2.MORPH_TOPHAT, k), k5)
+        scuff_map |= (tu > 28) & (tr < 18) & cover
 
     size = int(min(h, w) * 0.09)
     r = int(min(h, w) * 0.055)
