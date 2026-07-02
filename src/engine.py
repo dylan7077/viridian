@@ -318,6 +318,11 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
                 # if grade latency ever matters.
                 d = refgrade.assess_defects(result.warped, ref)
                 if d:
+                    # TAG-style flaw heat-map (whitening/damage red, scuff amber, per-corner
+                    # sub-grade boxes) — from the same aligned-difference the grades use.
+                    ov_img = d.pop("overlay_img", None)
+                    if ov_img is not None:
+                        out["defect_overlay"] = _to_data_uri(ov_img)
                     # Corners/edges only: the whitening read is calibrated and separates
                     # the labeled populations. Ref-surface lost its separation in the
                     # canonical resample (fine scratches smooth away), so surface stays

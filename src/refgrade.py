@@ -199,7 +199,9 @@ def assess_defects(user_card: np.ndarray, ref: np.ndarray) -> Optional[dict]:
     surf_fr = frac(scuff_map | dark, *inner)
 
     conf = "high" if inliers >= 60 else "medium"
+    overlay = _defect_overlay(user_w, defect, scuff_map, corner_fr, edge_fr, spots, size, strips)
     return {
+        "overlay_img": overlay,
         "corners": {"grade": _ref_frac_to_grade(max(corner_fr), _REF_CORNER_THR),
                     "per_corner": [round(x, 4) for x in corner_fr],
                     "confidence": conf, "method": "reference"},
@@ -227,6 +229,36 @@ def _ref_frac_to_grade(frac: float, table) -> int:
         if frac <= thr:
             return g
     return 3
+
+
+def _grade_bgr(g: int) -> tuple:
+    """Grade → BGR colour: gems green, 7-8 amber, low red (matches the UI seal logic)."""
+    return (120, 200, 90) if g >= 9 else (60, 190, 235) if g >= 7 else (66, 66, 235)
+
+
+def _defect_overlay(user_w, defect, scuff, corner_fr, edge_fr, spots, size, strips):
+    """TAG-style flaw map: dim the aligned card, tint whitening/damage red and surface
+    scuff amber, and box each corner with its sub-grade. Purely for display."""
+    ov = (user_w.astype(np.float32) * 0.80).astype(np.uint8)
+    a = 0.6
+    for mask, colour in ((defect, (66, 66, 235)), (scuff & ~defect, (40, 170, 235))):
+        if mask.any():
+            ov[mask] = (ov[mask] * (1 - a) + np.array(colour, np.float32) * a).astype(np.uint8)
+    h, w = ov.shape[:2]
+    for (x, y), fr in zip(spots, corner_fr):          # corner boxes + sub-grade
+        g = _ref_frac_to_grade(fr, _REF_CORNER_THR)
+        col = _grade_bgr(g)
+        cv2.rectangle(ov, (x + 2, y + 2), (x + size - 2, y + size - 2), col, 2)
+        tx = x + 8 if x < w // 2 else x + size - 32
+        ty = y + 30 if y < h // 2 else y + size - 10
+        cv2.putText(ov, str(g), (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.8, col, 2, cv2.LINE_AA)
+    for (ys, xs), fr, lab in zip(strips, edge_fr, ("T", "B", "L", "R")):   # edge grades
+        g = _ref_frac_to_grade(fr, _REF_EDGE_THR)
+        col = _grade_bgr(g)
+        pos = {"T": (w // 2 - 12, 26), "B": (w // 2 - 12, h - 12),
+               "L": (10, h // 2), "R": (w - 46, h // 2)}[lab]
+        cv2.putText(ov, f"{lab}{g}", pos, cv2.FONT_HERSHEY_SIMPLEX, 0.6, col, 2, cv2.LINE_AA)
+    return ov
 
 
 def measure_centering(user_card: np.ndarray, ref: np.ndarray) -> Optional[dict]:

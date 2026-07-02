@@ -391,13 +391,26 @@ function render(r) {
 
   if (c.ok) html += centeringDiagram(c);
 
+  const refGraded = g.corners && g.corners.method === "reference";
   html += `<div class="subgrades">
     ${bar("Centering", c.ok ? c.grade : null, false, c.ok ? (c.confidence === "low" ? "low confidence — reshoot flat" : "measured · counts") : "could not measure")}
     ${bar("Surface", g.surface.grade, true, "rough · counts")}
-    ${bar("Corners", g.corners.grade, true, "experimental")}
-    ${bar("Edges", g.edges.grade, true, "experimental")}
-  </div>
-  <p class="sg-note" style="margin-bottom:18px">The grade is driven by <b>centering</b> (measured) and <b>surface</b> (validated on real cards). Corners &amp; edges are shown for reference only — single-photo heuristics aren't reliable enough to count toward the grade.</p>`;
+    ${bar("Corners", g.corners.grade, !refGraded, refGraded ? "measured · counts" : "experimental")}
+    ${bar("Edges", g.edges.grade, !refGraded, refGraded ? "measured · counts" : "experimental")}
+  </div>`;
+  if (refGraded) {
+    html += `<p class="sg-note" style="margin-bottom:14px">Graded <b>TAG-style</b> — centering, corners and edges are measured against this card's reference print (the print cancels; real whitening &amp; damage survive) and count toward the grade. Surface uses a validated scratch detector.</p>`;
+  } else {
+    html += `<p class="sg-note" style="margin-bottom:18px">The grade is driven by <b>centering</b> (measured) and <b>surface</b> (validated on real cards). Corners &amp; edges are shown for reference only here — without a reference-image alignment, single-photo heuristics aren't reliable enough to count.</p>`;
+  }
+  if (r.defect_overlay) {
+    html += `<figure class="overlay-fig">
+      <img class="overlay-img" src="${r.defect_overlay}" alt="Corner, edge and surface flaw map" />
+      <figcaption><b>Corner &amp; edge report</b> — every corner boxed with its sub-grade ·
+        <span style="color:#e05a5a">red = whitening / damage</span> ·
+        <span style="color:#e0a94a">amber = surface scuff</span></figcaption>
+    </figure>`;
+  }
 
   // ── Back of card (when a back photo was graded) ──────────────────────────
   const gb = g.back;
