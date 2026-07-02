@@ -100,14 +100,14 @@ function buildSlide(it) {
 
 function val(it) { return it.graded != null ? it.graded : (it.raw != null ? it.raw : 0); }
 
-// Top 5 highest-value identified cards graded in the last 7 days.
+// Top 3 highest-value identified cards graded in the last 7 days.
 function renderTop(items) {
   const wrap = document.getElementById("actTop5");
   const grid = document.getElementById("actTop5Grid");
   const weekAgo = Math.floor(Date.now() / 1000) - 7 * 86400;
   const candidates = items.filter((it) => it.id && it.ts >= weekAgo && val(it) > 0);
   if (!candidates.length) { wrap.hidden = true; return; }
-  // Keep the highest-value instance per card, then take the top 5 by value.
+  // Keep the highest-value instance per card, then take the top 3 by value.
   const best = new Map();
   for (const it of candidates) {
     const prev = best.get(it.id);

@@ -466,3 +466,23 @@ body.cam-open { overflow: hidden; }
   background: #fff; border: 4px solid rgba(255, 255, 255, 0.55);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); transition: transform .08s ease; }
 .cam-shutter:active { transform: scale(0.92); }
+
+/* ── Back-of-card capture + report ─────────────────────────────────────── */
+.back-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--border);
+  animation: fadeIn .3s ease;
+}
+.back-label { margin: 0 0 2px; font-weight: 600; color: var(--text); }
+.back-label .req { color: var(--accent); font-weight: 600; }
+.back-sub { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.back-preview {
+  display: block; width: 100%; max-width: 280px; margin: 12px auto 0;
+  border-radius: 12px; border: 1px solid var(--border);
+}
+.back-report {
+  margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border);
+}
+.back-report-h { margin: 0 0 12px; font-size: 15px; color: var(--text); letter-spacing: .02em; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

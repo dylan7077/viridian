@@ -466,7 +466,8 @@ _grade_lock = asyncio.Lock()
 
 @app.post("/api/grade")
 async def grade(file: UploadFile = File(...), corners: str = Form(None),
-                source: str = Form("web")):
+                source: str = Form("web"),
+                back_file: UploadFile = File(None), back_corners: str = Form(None)):
     if _grade_lock.locked():
         return JSONResponse(
             {"ok": False, "busy": True,
@@ -474,10 +475,10 @@ async def grade(file: UploadFile = File(...), corners: str = Form(None),
                         "seconds and try again."},
             status_code=503)
     async with _grade_lock:
-        return await _do_grade(file, corners, source)
+        return await _do_grade(file, corners, source, back_file, back_corners)
 
 
-async def _do_grade(file: UploadFile, corners, source):
+async def _do_grade(file: UploadFile, corners, source, back_file=None, back_corners=None):
     data = await _read_upload(file)
     if data is None:
         return _too_large()
@@ -488,9 +489,23 @@ async def _do_grade(file: UploadFile, corners, source):
             pts = json.loads(corners)
         except Exception:
             pts = None
+    # Optional back-of-card photo (the website requires it; the Discord bot grades
+    # front-only). When present, the engine grades the back too and the headline grade
+    # becomes the worst-of the two sides.
+    back_data = None
+    back_pts = None
+    if back_file is not None:
+        back_data = await _read_upload(back_file)
+        if back_data is None:
+            return _too_large()
+        if back_corners:
+            try:
+                back_pts = json.loads(back_corners)
+            except Exception:
+                back_pts = None
     # Offload the blocking CV + ORB downloads to a thread so the event loop
     # (and /api/health polling) stays responsive while a card is processed.
-    result = await run_in_threadpool(engine.process_bytes, data, pts)
+    result = await run_in_threadpool(engine.process_bytes, data, pts, back_data, back_pts)
     # Everything below is bonus side-effects (archive, share, activity feed, webhook, index
     # count) on an ALREADY-computed grade. None of it may 500 the response — a paid grade must
     # return even if the DB is locked, disk is full, or Discord is down. Each helper mostly

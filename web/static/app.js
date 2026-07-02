@@ -16,6 +16,35 @@ const resultPanel = $("#result");
 const resultBody = $("#result-body");
 let selectedFile = null;
 
+// ---- back-of-card photo (required) ----------------------------------------
+let backFile = null;
+const backSection = $("#backSection");
+const backInput = $("#backFile");
+const backDropzone = $("#backDropzone");
+const backPreview = $("#backPreview");
+const backTakeBtn = $("#backTakePhoto");
+
+function updateAnalyzeEnabled() {
+  analyzeBtn.disabled = !(selectedFile && backFile);
+}
+function setBackFile(file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  backFile = file;
+  if (backPreview) { backPreview.src = URL.createObjectURL(file); backPreview.hidden = false; }
+  updateAnalyzeEnabled();
+}
+if (backInput) backInput.addEventListener("change", (e) => setBackFile(e.target.files[0]));
+if (backTakeBtn) backTakeBtn.addEventListener("click", () => {
+  if (window.Camera) Camera.open(setBackFile); else backInput.click();
+});
+if (backDropzone) {
+  ["dragenter", "dragover"].forEach((ev) =>
+    backDropzone.addEventListener(ev, (e) => { e.preventDefault(); backDropzone.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    backDropzone.addEventListener(ev, (e) => { e.preventDefault(); backDropzone.classList.remove("drag"); }));
+  backDropzone.addEventListener("drop", (e) => setBackFile(e.dataTransfer.files[0]));
+}
+
 // ---- lab status bar -------------------------------------------------------
 const DASH = "—";
 
@@ -69,7 +98,8 @@ function animateNum(el, from, to, dur = 650) {
 function setFile(file) {
   if (!file || !file.type.startsWith("image/")) return;
   selectedFile = file;
-  analyzeBtn.disabled = false;
+  if (backSection) backSection.hidden = false;   // now ask for the back
+  updateAnalyzeEnabled();                         // stays disabled until back is added too
   if (window.Crop) {
     Crop.load(file);                 // open the manual corner-align tool
   } else {
@@ -96,7 +126,7 @@ dropzone.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
 analyzeBtn.addEventListener("click", analyze);
 
 async function analyze() {
-  if (!selectedFile) return;
+  if (!selectedFile || !backFile) return;
   resultPanel.hidden = false;
   resultBody.innerHTML = `
     <div class="scanner"><img src="${preview.src}" alt="" /><div class="scan-line"></div></div>
@@ -108,6 +138,7 @@ async function analyze() {
   fd.append("file", selectedFile);
   const cn = window.Crop && Crop.corners();
   if (cn) fd.append("corners", JSON.stringify(cn));
+  fd.append("back_file", backFile);
   try {
     const res = await fetch("/api/grade", { method: "POST", body: fd });
     render(await res.json());
@@ -365,6 +396,32 @@ function render(r) {
     ${bar("Edges", g.edges.grade, true, "experimental")}
   </div>
   <p class="sg-note" style="margin-bottom:18px">The grade is driven by <b>centering</b> (measured) and <b>surface</b> (validated on real cards). Corners &amp; edges are shown for reference only — single-photo heuristics aren't reliable enough to count toward the grade.</p>`;
+
+  // ── Back of card (when a back photo was graded) ──────────────────────────
+  const gb = g.back;
+  if (gb && !slabbed) {
+    const bc = gb.centering || {};
+    html += `<div class="back-report">
+      <h4 class="back-report-h">🂠 Back of card</h4>`;
+    if (r.back_overlay) {
+      html += `<figure class="overlay-fig">
+        <img class="overlay-img" src="${r.back_overlay}" alt="Back analysis" />
+        <figcaption>Back detection &amp; centering — whitening pops against the blue back</figcaption>
+      </figure>`;
+    }
+    if (r.back_capture_warning) html += `<div class="banner warn">📷 ${r.back_capture_warning} A clearer back photo grades more accurately.</div>`;
+    html += `<div class="subgrades">
+      ${bar("Centering", bc.ok ? bc.grade : null, false, bc.ok ? "measured · counts" : "could not align the back")}
+      ${bar("Surface", gb.surface.grade, true, "rough · counts")}
+      ${bar("Corners", gb.corners.grade, true, "whitening")}
+      ${bar("Edges", gb.edges.grade, true, "whitening")}
+    </div>`;
+    if (g.front_overall != null && gb.overall != null) {
+      const worse = gb.overall < g.front_overall ? " (the back)" : (g.front_overall < gb.overall ? " (the front)" : "");
+      html += `<p class="sg-note" style="margin-bottom:18px">Front grades <b>${g.front_overall}</b>, back grades <b>${gb.overall}</b> — your overall <b>${overall}</b> is the worse side${worse}.</p>`;
+    }
+    html += `</div>`;
+  }
 
   if (r.match) {
     const card = r.match.card;

@@ -16,7 +16,7 @@ import numpy as np
 import config
 
 _log = logging.getLogger("viridian.slab")
-from src import grading, pricing, slab, graded_pricing, refgrade, onnx_grader
+from src import grading, pricing, slab, graded_pricing, refgrade, onnx_grader, backgrade
 from src.matching import CardIndex
 from src.orb_index import OrbIndex
 
@@ -96,11 +96,36 @@ def _apply_real_graded(value: dict, card: dict, grade) -> None:
     value["graded_real"] = True
 
 
-def process_image(img: np.ndarray, corners=None) -> dict:
+def _px_corners(corners, img: np.ndarray):
+    """Convert 4 normalised (0..1) corner points to pixel coords for the warp."""
+    if corners and len(corners) == 4:
+        h, w = img.shape[:2]
+        try:
+            return [[float(x) * w, float(y) * h] for x, y in corners]
+        except Exception:
+            return None
+    return None
+
+
+def _worst(a, b):
+    """PSA-style worst-of: a card is only as good as its worse side. None-safe."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
+
+
+def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" = None,
+                  back_corners=None) -> dict:
     """Run the full grade + identify + price pipeline on a BGR image.
 
     corners (optional): 4 [x, y] points NORMALISED to 0..1, supplied by the
     manual align tool. Converted to pixels and used for the warp.
+
+    back_img (optional): the back-of-card photo. When supplied, the back is graded
+    too (centering/whitening/surface vs the uniform blue back) and the headline
+    grade becomes the PSA-style worst-of the two sides.
     """
     # Too small to hold a gradeable card — reject with a clear message rather than
     # returning a meaningless grade for a thumbnail / 1x1 / icon.
@@ -156,6 +181,32 @@ def process_image(img: np.ndarray, corners=None) -> dict:
     except Exception:
         pass
 
+    # ── Back-of-card grading (PSA-style worst-of) ──────────────────────────────
+    # White wear pops against the uniform blue back, and back-centering aligns to one
+    # canonical reference — so the back is graded separately, then the headline grade
+    # becomes the worst of the two sides (the front-only number is kept as front_overall).
+    back_overall = None
+    if back_img is not None:
+        bres = grading.grade_card(back_img, manual_corners=_px_corners(back_corners, back_img))
+        if not bres.detected:
+            return {"ok": False, "stage": "detect_back",
+                    "message": "Couldn't find a card in the BACK photo. Use a flat, "
+                               "well-lit shot of the whole card back on a contrasting "
+                               "background."}
+        back = backgrade.grade_back(bres.warped)
+        back_overall = grading._combine(back["centering"], back["corners"],
+                                        back["edges"], back["surface"])
+        out["grade"]["back"] = {
+            "overall": back_overall, "centering": back["centering"],
+            "corners": back["corners"], "edges": back["edges"], "surface": back["surface"],
+        }
+        out["grade"]["front_overall"] = out["grade"]["overall"]
+        out["grade"]["overall"] = _worst(out["grade"]["overall"], back_overall)
+        out["back_overlay"] = _to_data_uri(grading.annotate_detection(
+            bres.warped, back["centering"], back["corners"], back["edges"]))
+        if bres.capture and not bres.capture.get("ok", True):
+            out["back_capture_warning"] = " ".join(bres.capture.get("warnings", []))
+
     di0 = result.detect_info or {}
     cov = di0.get("coverage", 1.0)
     method = di0.get("method")
@@ -192,7 +243,7 @@ def process_image(img: np.ndarray, corners=None) -> dict:
         _log.info("slab read: grade=%s | gate signal maybe_slab=%s cov=%s fit=%s q=%s",
                   label["grade"], maybe_slab, di.get("coverage"),
                   di.get("aspect_fit"), di.get("quality"))
-    grade_for_value = result.overall
+    grade_for_value = out["grade"]["overall"]   # combined (worst-of) when a back was graded
     if label and label.get("grade") is not None:
         out["slab"] = label
         grade_for_value = label["grade"]
@@ -213,6 +264,9 @@ def process_image(img: np.ndarray, corners=None) -> dict:
                     g = out["grade"]
                     g["centering"] = rc
                     g["overall"] = grading._combine(rc, g["corners"], g["edges"], g["surface"])
+                    if back_img is not None:
+                        g["front_overall"] = g["overall"]
+                        g["overall"] = _worst(g["overall"], back_overall)
                     out["overlay"] = _to_data_uri(grading.annotate_detection(
                         result.warped, rc, g["corners"], g["edges"]))
                     if not (label and label.get("grade") is not None):
@@ -302,11 +356,16 @@ def process_image(img: np.ndarray, corners=None) -> dict:
     return out
 
 
-def process_bytes(data: bytes, corners=None) -> dict:
+def process_bytes(data: bytes, corners=None, back_data: "bytes | None" = None,
+                  back_corners=None) -> dict:
     img = decode_image(data)
     if img is None:
         return {"ok": False, "stage": "decode", "message": "Unreadable image file."}
-    return process_image(img, corners=corners)
+    back_img = decode_image(back_data) if back_data else None
+    if back_data and back_img is None:
+        return {"ok": False, "stage": "decode_back",
+                "message": "Unreadable back-of-card image file."}
+    return process_image(img, corners=corners, back_img=back_img, back_corners=back_corners)
 
 
 def detect_corners_bytes(data: bytes):

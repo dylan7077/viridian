@@ -8,11 +8,11 @@ const ovStats = document.getElementById("ovStats");
 const CSS = getComputedStyle(document.documentElement);
 const C = {
   primary: (CSS.getPropertyValue("--primary").trim() || "#2dd4a0"),
-  muted:   (CSS.getPropertyValue("--muted").trim()   || "#8b9a94"),
-  border:  (CSS.getPropertyValue("--border").trim()  || "rgba(255,255,255,0.10)"),
-  gem:  "#2FE0B0",
+  muted: (CSS.getPropertyValue("--muted").trim() || "#8b9a94"),
+  border: (CSS.getPropertyValue("--border").trim() || "rgba(255,255,255,0.10)"),
+  gem: "#7a8450",
   high: "#E6C97A",
-  low:  "rgba(255,255,255,0.28)",
+  low: "rgba(255,255,255,0.28)",
 };
 function barColor(grade) {                 // colour a distribution bar by PSA tier
   if (grade >= 9) return C.gem;
@@ -70,16 +70,26 @@ function renderCharts(d) {
   const step = Math.max(1, Math.ceil(labels.length / 10));
   timelineChart = new Chart(document.getElementById("ovTimeline"), {
     type: "bar",
-    data: { labels, datasets: [{ data: tl.map((p) => p.count),
-      backgroundColor: C.primary, borderRadius: 4, maxBarThickness: 26 }] },
+    data: {
+      labels, datasets: [{
+        data: tl.map((p) => p.count),
+        backgroundColor: C.primary, borderRadius: 4, maxBarThickness: 26
+      }]
+    },
     options: {
       ...COMMON,
       scales: {
-        x: { grid: { display: false },
-             ticks: { color: C.muted, font: { size: 10 }, autoSkip: false,
-                      callback: (v, i) => (i % step === 0 ? labels[i] : "") } },
-        y: { beginAtZero: true, grid: { color: C.border },
-             ticks: { color: C.muted, font: { size: 10 }, precision: 0 } },
+        x: {
+          grid: { display: false },
+          ticks: {
+            color: C.muted, font: { size: 10 }, autoSkip: false,
+            callback: (v, i) => (i % step === 0 ? labels[i] : "")
+          }
+        },
+        y: {
+          beginAtZero: true, grid: { color: C.border },
+          ticks: { color: C.muted, font: { size: 10 }, precision: 0 }
+        },
       },
     },
   });
@@ -90,17 +100,23 @@ function renderCharts(d) {
     type: "bar",
     data: {
       labels: dist.map((_, i) => i + 1),
-      datasets: [{ data: dist, backgroundColor: dist.map((_, i) => barColor(i + 1)),
-        borderRadius: 4, maxBarThickness: 34 }],
+      datasets: [{
+        data: dist, backgroundColor: dist.map((_, i) => barColor(i + 1)),
+        borderRadius: 4, maxBarThickness: 34
+      }],
     },
     options: {
       ...COMMON,
       scales: {
-        x: { grid: { display: false },
-             ticks: { color: C.muted, font: { size: 10 } },
-             title: { display: true, text: "PSA grade", color: C.muted, font: { size: 10 } } },
-        y: { beginAtZero: true, grid: { color: C.border },
-             ticks: { color: C.muted, font: { size: 10 }, precision: 0 } },
+        x: {
+          grid: { display: false },
+          ticks: { color: C.muted, font: { size: 10 } },
+          title: { display: true, text: "PSA grade", color: C.muted, font: { size: 10 } }
+        },
+        y: {
+          beginAtZero: true, grid: { color: C.border },
+          ticks: { color: C.muted, font: { size: 10 }, precision: 0 }
+        },
       },
     },
   });
