@@ -265,6 +265,52 @@ def _defect_overlay(user_w, defect, scuff, corner_fr, edge_fr, spots, size, stri
     return ov
 
 
+def surface_scan(frames, ref) -> Optional[dict]:
+    """Depth/surface scan from a multi-angle tilt burst (display-only, does NOT grade).
+
+    As the card tilts, specular highlights sweep the surface. A scratch, dent or
+    indentation catches light at some angles and not others → a high per-pixel range
+    across the aligned frames AND a localized bright glint (top-hat). Broad holo
+    shimmer is rejected (not localized), flat matte area is rejected (low range), and
+    reference print-lines cancel (top-hat present in the clean reference too). Returns
+    a cyan flaw overlay + the affected fraction, or None if fewer than 3 frames align.
+    """
+    if not frames or len(frames) < 3:
+        return None
+    h, w = CARD_H, CARD_W
+    ref_w = ref if ref.shape[:2] == (h, w) else cv2.resize(ref, (w, h))
+    grays, covers = [], []
+    for f in frames:
+        H, inl = _homography(ref_w, f)
+        if H is None or inl < 25:
+            continue
+        Hinv = np.linalg.inv(H)
+        grays.append(cv2.warpPerspective(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY), Hinv, (w, h)).astype(np.int16))
+        covers.append(cv2.warpPerspective(np.full(f.shape[:2], 255, np.uint8), Hinv, (w, h)) > 200)
+    if len(grays) < 3:
+        return None
+    stack = np.stack(grays)                              # K x H x W aligned
+    cover = np.logical_and.reduce(covers)                # seen in every frame
+    base = cv2.cvtColor(stack.min(0).astype(np.uint8), cv2.COLOR_GRAY2BGR)   # de-glared scan base
+    spec_range = (stack.max(0) - stack.min(0)).astype(np.uint8)   # how much light swept
+    peak = stack.max(0).astype(np.uint8)                          # brightest moment
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    k5 = np.ones((5, 5), np.uint8)
+    th = cv2.morphologyEx(peak, cv2.MORPH_TOPHAT, k)              # localized glint
+    th_r = cv2.dilate(cv2.morphologyEx(cv2.cvtColor(ref_w, cv2.COLOR_BGR2GRAY),
+                                       cv2.MORPH_TOPHAT, k), k5)   # print lines cancel
+    inner = np.zeros((h, w), bool)
+    inner[int(h * 0.06):int(h * 0.94), int(w * 0.05):int(w * 0.95)] = True
+    # ponytail: thresholds are conservative defaults — calibrate on labeled worn holos.
+    scan = (spec_range > 38) & (th > 24) & (th_r < 18) & cover & inner
+    frac = float(scan.sum()) / max(int((cover & inner).sum()), 1)
+    ov = (base.astype(np.float32) * 0.80).astype(np.uint8)
+    a = 0.72
+    ov[scan] = (ov[scan] * (1 - a) + np.array((235, 210, 40), np.float32) * a).astype(np.uint8)  # cyan
+    return {"overlay_img": ov, "specular_frac": round(frac, 4),
+            "frames_used": len(grays), "confidence": "display"}
+
+
 def measure_centering(user_card: np.ndarray, ref: np.ndarray) -> Optional[dict]:
     """Centering from reference alignment. Same shape as grading.measure_centering, with
     method='reference'. Returns None to fall back to the heuristic when alignment is weak."""

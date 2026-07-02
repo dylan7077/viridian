@@ -168,7 +168,7 @@ def _identify(warped: np.ndarray, index: CardIndex, oi: OrbIndex) -> Optional[di
 
 
 def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" = None,
-                  back_corners=None) -> dict:
+                  back_corners=None, scan_imgs=None) -> dict:
     """Run the full grade + identify + price pipeline on a BGR image.
 
     corners (optional): 4 [x, y] points NORMALISED to 0..1, supplied by the
@@ -323,6 +323,14 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
                     ov_img = d.pop("overlay_img", None)
                     if ov_img is not None:
                         out["defect_overlay"] = _to_data_uri(ov_img)
+                    # Depth/surface scan from the multi-angle tilt frames (display-only):
+                    # where the surface catches light abnormally = scratches/dents.
+                    if scan_imgs:
+                        sc = refgrade.surface_scan(scan_imgs, ref)
+                        if sc:
+                            out["surface_scan_overlay"] = _to_data_uri(sc["overlay_img"])
+                            out["surface_scan"] = {"specular_frac": sc["specular_frac"],
+                                                   "frames_used": sc["frames_used"]}
                     # Corners/edges only: the whitening read is calibrated and separates
                     # the labeled populations. Ref-surface lost its separation in the
                     # canonical resample (fine scratches smooth away), so surface stays
@@ -426,7 +434,7 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
 
 
 def process_bytes(data: bytes, corners=None, back_data: "bytes | None" = None,
-                  back_corners=None) -> dict:
+                  back_corners=None, scan_datas=None) -> dict:
     img = decode_image(data)
     if img is None:
         return {"ok": False, "stage": "decode", "message": "Unreadable image file."}
@@ -434,7 +442,9 @@ def process_bytes(data: bytes, corners=None, back_data: "bytes | None" = None,
     if back_data and back_img is None:
         return {"ok": False, "stage": "decode_back",
                 "message": "Unreadable back-of-card image file."}
-    return process_image(img, corners=corners, back_img=back_img, back_corners=back_corners)
+    scan_imgs = [im for im in (decode_image(b) for b in (scan_datas or [])) if im is not None]
+    return process_image(img, corners=corners, back_img=back_img, back_corners=back_corners,
+                         scan_imgs=scan_imgs)
 
 
 def detect_corners_bytes(data: bytes):

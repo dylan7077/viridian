@@ -467,7 +467,8 @@ _grade_lock = asyncio.Lock()
 @app.post("/api/grade")
 async def grade(file: UploadFile = File(...), corners: str = Form(None),
                 source: str = Form("web"),
-                back_file: UploadFile = File(None), back_corners: str = Form(None)):
+                back_file: UploadFile = File(None), back_corners: str = Form(None),
+                scan: list[UploadFile] = File(default=[])):
     if _grade_lock.locked():
         return JSONResponse(
             {"ok": False, "busy": True,
@@ -475,10 +476,10 @@ async def grade(file: UploadFile = File(...), corners: str = Form(None),
                         "seconds and try again."},
             status_code=503)
     async with _grade_lock:
-        return await _do_grade(file, corners, source, back_file, back_corners)
+        return await _do_grade(file, corners, source, back_file, back_corners, scan)
 
 
-async def _do_grade(file: UploadFile, corners, source, back_file=None, back_corners=None):
+async def _do_grade(file: UploadFile, corners, source, back_file=None, back_corners=None, scan=None):
     data = await _read_upload(file)
     if data is None:
         return _too_large()
@@ -503,9 +504,15 @@ async def _do_grade(file: UploadFile, corners, source, back_file=None, back_corn
                 back_pts = json.loads(back_corners)
             except Exception:
                 back_pts = None
+    # Optional multi-angle tilt frames for the depth/surface scan (display-only).
+    scan_datas = []
+    for sf in (scan or []):
+        b = await _read_upload(sf)
+        if b:
+            scan_datas.append(b)
     # Offload the blocking CV + ORB downloads to a thread so the event loop
     # (and /api/health polling) stays responsive while a card is processed.
-    result = await run_in_threadpool(engine.process_bytes, data, pts, back_data, back_pts)
+    result = await run_in_threadpool(engine.process_bytes, data, pts, back_data, back_pts, scan_datas)
     # Everything below is bonus side-effects (archive, share, activity feed, webhook, index
     # count) on an ALREADY-computed grade. None of it may 500 the response — a paid grade must
     # return even if the DB is locked, disk is full, or Discord is down. Each helper mostly
