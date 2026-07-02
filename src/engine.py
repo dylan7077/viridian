@@ -116,6 +116,56 @@ def _worst(a, b):
     return min(a, b)
 
 
+def _identify(warped: np.ndarray, index: CardIndex, oi: OrbIndex) -> Optional[dict]:
+    """Identify with retry tiers — only paid when the straight match isn't confident.
+
+    A clean read can still miss for three known reasons, each with a cheap fix:
+      * the warp came out upside-down (a rectangle is orientation-ambiguous) → rot180
+      * holo glare / washed contrast killed the features → CLAHE-normalised retry
+      * the right card wasn't in pHash's top shortlist → one wider-shortlist retry
+    Returns the first confident result (tagged with which variant found it), else the
+    best unconfident guess for the "closest guess" message.
+    """
+    def q(img, top_n=config.ORB_PHASH_SHORTLIST):
+        shortlist = index.match(img, top_n=top_n)
+        ids = [s["card"].get("id") for s in shortlist if s.get("card")]
+        return oi.query_shortlist(img, ids)
+
+    # Both orientations ALWAYS scored: near-symmetric art can confidently match the
+    # WRONG card when the photo is upside-down, so an early return on the first
+    # confident hit is a trap — the true orientation out-votes the false one instead.
+    up, down = q(warped), q(cv2.rotate(warped, cv2.ROTATE_180))
+    both = [(n, g) for n, g in (("as-is", up), ("rot180", down)) if g]
+    conf = [(n, g) for n, g in both if g.get("confident")]
+    if conf:
+        name, gr = max(conf, key=lambda ng: ng[1].get("orb_score", 0))
+        gr["variant"] = name
+        return gr
+
+    # Retry tiers, only paid on a miss: CLAHE for holo glare / washed contrast, then
+    # one wider pHash shortlist in case the right card wasn't in the top slice.
+    # ponytail: 5x shortlist as the single "wide" retry; a full-index scan is ~50s, not worth it.
+    tries = []
+    try:
+        l, a, b = cv2.split(cv2.cvtColor(warped, cv2.COLOR_BGR2LAB))
+        l = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(l)
+        tries.append(("deglare", cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR),
+                      config.ORB_PHASH_SHORTLIST))
+    except Exception:
+        pass
+    tries.append(("wide", warped, config.ORB_PHASH_SHORTLIST * 5))
+
+    best = max((g for _, g in both), key=lambda g: g.get("confidence", 0), default=None)
+    for name, img, top_n in tries:
+        gr = q(img, top_n)
+        if gr and gr.get("confident"):
+            gr["variant"] = name
+            return gr
+        if gr and (best is None or gr.get("confidence", 0) > best.get("confidence", 0)):
+            best = gr
+    return best
+
+
 def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" = None,
                   back_corners=None) -> dict:
     """Run the full grade + identify + price pipeline on a BGR image.
@@ -316,13 +366,12 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
     # those (sub-second, vs ~50s scanning all). NEVER guess — only present a confident
     # match; otherwise say we couldn't identify it.
     if oi and oi.ok and len(index):
-        shortlist = index.match(result.warped, top_n=config.ORB_PHASH_SHORTLIST)
-        ids = [s["card"].get("id") for s in shortlist if s.get("card")]
-        gr = oi.query_shortlist(result.warped, ids)
+        gr = _identify(result.warped, index, oi)
         if gr and gr.get("confident"):
             _present({"card": gr["card"], "method": "orb", "distance": 0,
                       "orb_score": gr["orb_score"], "confidence": gr.get("confidence"),
-                      "confident": True})
+                      "confident": True, "variant": gr.get("variant"),
+                      "print_uncertain": gr.get("print_uncertain", False)})
         else:
             _unsure(gr.get("card") if gr else None)
     elif oi and oi.ok:

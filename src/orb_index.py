@@ -118,7 +118,18 @@ class OrbIndex:
             return None
         ranked = sorted(votes.items(), key=lambda kv: kv[1], reverse=True)
         bi, score = ranked[0]
-        runner = ranked[1][1] if len(ranked) > 1 else 0
+        # Same-art reprints (basic energies, promo reprints) split votes between
+        # visually identical prints, so no single print can ever dominate. Gate the
+        # winner against the best *differently-named* rival instead, and flag the
+        # print ambiguity so the UI can say "right card, print uncertain".
+        name0 = (self.cards[bi].get("name") or "").lower()
+        runner, print_split = 0, False
+        for ci, v in ranked[1:]:
+            if (self.cards[ci].get("name") or "").lower() == name0:
+                print_split = print_split or v >= 0.5 * score
+                continue
+            runner = v
+            break
         lead = score - runner
         margin = score / (score + runner) if (score + runner) else 0.0
         confidence = round(min(0.99, margin * min(1.0, score / _SCORE_FULL)), 2)
@@ -126,7 +137,8 @@ class OrbIndex:
                      and score >= runner * _MIN_RATIO and confidence >= _MIN_CONF)
         return {"card": self.cards[bi], "orb_score": int(score),
                 "runner_up": int(runner), "confidence": confidence,
-                "method": method, "confident": bool(confident)}
+                "method": method, "confident": bool(confident),
+                "print_uncertain": bool(print_split)}
 
     def query_shortlist(self, card_bgr: np.ndarray, card_ids) -> Optional[dict]:
         """Fast identify: ORB-match the photo against ONLY the given candidate cards
