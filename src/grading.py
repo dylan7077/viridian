@@ -800,10 +800,15 @@ def _put(img, text, org, color=_WHITE, scale=0.42):
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 1, cv2.LINE_AA)
 
 
+_RED = (107, 115, 229)     # site's warn red, BGR
+
+
 def annotate_detection(card: np.ndarray, centering: dict,
                        corners: dict, edges: dict) -> np.ndarray:
-    """Draw the analysis overlay: centering frame, border measurements,
-    corner sample boxes and edge strips on the flattened card."""
+    """Draw the analysis overlay, TAG-report style: a starburst of rays from the
+    print's true centre out to the card corners and edges, per-side distance
+    callouts, and an offset indicator against the card's perfect centre — so you
+    SEE the miscut, not just read a ratio."""
     vis = card.copy()
     h, w = vis.shape[:2]
 
@@ -819,22 +824,58 @@ def annotate_detection(card: np.ndarray, centering: dict,
     for cx, cy in [(0, 0), (w - size, 0), (0, h - size), (w - size, h - size)]:
         cv2.rectangle(vis, (cx, cy), (cx + size, cy + size), _GOLD, 2)
 
-    # centering frame + border measurements
-    if centering.get("ok"):
-        f, b = centering["frame"], centering["borders_px"]
-        lx, rx, ty, by = f["lx"], f["rx"], f["ty"], f["by"]
-        mx, my = w // 2, h // 2
-        cv2.rectangle(vis, (lx, ty), (rx, by), _GREEN, 2)
-        cv2.line(vis, (0, my), (lx, my), _GREEN, 1)
-        cv2.line(vis, (rx, my), (w, my), _GREEN, 1)
-        cv2.line(vis, (mx, 0), (mx, ty), _GREEN, 1)
-        cv2.line(vis, (mx, by), (mx, h), _GREEN, 1)
-        _put(vis, f"{b['left']}", (4, my - 6))
-        _put(vis, f"{b['right']}", (rx + (w - rx) // 2 - 10, my - 6))
-        _put(vis, f"{b['top']}", (mx + 5, max(ty // 2, 12)))
-        _put(vis, f"{b['bottom']}", (mx + 5, by + (h - by) // 2))
-        _put(vis, f"L/R {centering['left_right']}", (8, 20), _GREEN, 0.5)
-        _put(vis, f"T/B {centering['top_bottom']}", (8, 40), _GREEN, 0.5)
+    if not centering.get("ok"):
+        return vis
+
+    f, b = centering["frame"], centering["borders_px"]
+    lx, rx, ty, by = f["lx"], f["rx"], f["ty"], f["by"]
+    # The print's centre (frame midpoint) vs the card's perfect centre.
+    fx, fy = (lx + rx) // 2, (ty + by) // 2
+    mx, my = w // 2, h // 2
+
+    # ── starburst: thin rays from the PRINT centre to card corners, frame corners
+    #    and through the axes — off-centre cards visibly skew the whole burst.
+    burst = vis.copy()
+    targets = [(0, 0), (w - 1, 0), (w - 1, h - 1), (0, h - 1),          # card corners
+               (lx, ty), (rx, ty), (rx, by), (lx, by)]                  # frame corners
+    for tx2, ty2 in targets:
+        cv2.line(burst, (fx, fy), (tx2, ty2), _RED, 1, cv2.LINE_AA)
+    cv2.line(burst, (0, fy), (w, fy), _RED, 1, cv2.LINE_AA)             # horizontal ray
+    cv2.line(burst, (fx, 0), (fx, h), _RED, 1, cv2.LINE_AA)             # vertical ray
+    cv2.addWeighted(burst, 0.55, vis, 0.45, 0, vis)
+
+    # inner frame + perfect-centre crosshair vs actual print centre
+    cv2.rectangle(vis, (lx, ty), (rx, by), _GREEN, 2)
+    ch = int(min(h, w) * 0.03)
+    cv2.line(vis, (mx - ch, my), (mx + ch, my), _WHITE, 1, cv2.LINE_AA)
+    cv2.line(vis, (mx, my - ch), (mx, my + ch), _WHITE, 1, cv2.LINE_AA)
+    cv2.circle(vis, (fx, fy), 4, _RED, -1, cv2.LINE_AA)
+    dx, dy = fx - mx, fy - my
+    off = (dx * dx + dy * dy) ** 0.5
+    perfect = off <= max(2, min(h, w) * 0.006)
+    if not perfect:
+        cv2.arrowedLine(vis, (mx, my), (fx, fy), _GOLD, 2, cv2.LINE_AA, tipLength=0.35)
+
+    # ── per-side distance callouts, on the measurement lines themselves
+    cv2.line(vis, (0, fy), (lx, fy), _GOLD, 2)
+    cv2.line(vis, (rx, fy), (w, fy), _GOLD, 2)
+    cv2.line(vis, (fx, 0), (fx, ty), _GOLD, 2)
+    cv2.line(vis, (fx, by), (fx, h), _GOLD, 2)
+    _put(vis, f"{b['left']}px", (4, fy - 8), _GOLD)
+    _put(vis, f"{b['right']}px", (min(rx + 4, w - 58), fy - 8), _GOLD)
+    _put(vis, f"{b['top']}px", (fx + 6, max(ty - 6, 14)), _GOLD)
+    _put(vis, f"{b['bottom']}px", (fx + 6, min(by + 16, h - 6)), _GOLD)
+
+    # ── verdict strip
+    _put(vis, f"L/R {centering['left_right']}  T/B {centering['top_bottom']}",
+         (8, 22), _GREEN, 0.55)
+    if perfect:
+        _put(vis, "PERFECT CENTER", (8, 44), _GREEN, 0.55)
+    else:
+        _put(vis, f"off-center {dx:+d}px, {dy:+d}px", (8, 44), _GOLD, 0.5)
+    g = centering.get("grade")
+    if g is not None:
+        _put(vis, f"centering: PSA {g}", (8, h - 12), _WHITE, 0.5)
     return vis
 
 
@@ -842,6 +883,36 @@ def warp_from_corners(img: np.ndarray, corners) -> np.ndarray:
     """Warp to the canonical card using 4 user-supplied corners (pixel coords,
     any order). Lets the user align the card manually for a perfect crop."""
     return _warp_to_card(img, np.array(corners, dtype="float32"))
+
+
+def _refine_quad_hough(img: np.ndarray, rect: np.ndarray) -> np.ndarray:
+    """Re-run the line-intersection detector on a tight crop around a coarse quad.
+    With the background cropped away, Hough locks onto the card's true straight
+    edges — sub-pixel corner precision the contour detectors can't give. Returns
+    the refined quad (TL,TR,BR,BL, image coords) or the original on any doubt."""
+    h, w = img.shape[:2]
+    m = int(0.06 * max(rect[:, 0].max() - rect[:, 0].min(),
+                       rect[:, 1].max() - rect[:, 1].min())) + 4
+    x0, y0 = max(0, int(rect[:, 0].min()) - m), max(0, int(rect[:, 1].min()) - m)
+    x1, y1 = min(w, int(rect[:, 0].max()) + m), min(h, int(rect[:, 1].max()) + m)
+    crop = img[y0:y1, x0:x1]
+    if min(crop.shape[:2]) < 80:
+        return rect
+    scale = 1000.0 / max(crop.shape[:2])
+    small = cv2.resize(crop, None, fx=scale, fy=scale) if scale < 1 else crop
+    s = scale if scale < 1 else 1.0
+    try:
+        res = _hough_candidate(small, small.shape[0] * small.shape[1])
+    except Exception:
+        res = None
+    if res is None:
+        return rect
+    refined = _order_points(res[0] / s) + np.float32([x0, y0])
+    # Sanity: every refined corner must stay near its coarse estimate.
+    tol = 0.08 * max(x1 - x0, y1 - y0)
+    if np.linalg.norm(refined - rect, axis=1).max() > tol:
+        return rect
+    return refined
 
 
 def detect_corners(img: np.ndarray):
@@ -852,6 +923,9 @@ def detect_corners(img: np.ndarray):
     if not quad or len(quad) != 4:
         return None
     rect = _order_points(np.array(quad, dtype="float32"))
+    # Hough already IS line-intersection precision; refine the coarser detectors.
+    if dbg.get("method") not in ("hough", "manual", "fullframe"):
+        rect = _refine_quad_hough(img, rect)
     h, w = img.shape[:2]
     return [[float(x) / w, float(y) / h] for x, y in rect]
 
