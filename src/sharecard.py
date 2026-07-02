@@ -43,6 +43,12 @@ def _grade_color(g) -> tuple:
     return GOLD if g >= 9 else ACCENT if g >= 7 else DIM
 
 
+def _mix(color: tuple, f: float) -> tuple:
+    """Blend `color` toward the dark background (f=1 keeps colour, f=0 → bg)."""
+    bg = (12, 24, 19)
+    return tuple(int(c * f + b * (1 - f)) for c, b in zip(color, bg))
+
+
 @lru_cache(maxsize=32)
 def _font(family: str, size: int, weight: int) -> ImageFont.FreeTypeFont:
     f = ImageFont.truetype(str(FONTS_DIR / f"{family}.ttf"), size)
@@ -93,16 +99,27 @@ def _fit(draw, text, font, maxw) -> str:
 
 
 def _background() -> Image.Image:
-    """Diagonal dark-green gradient + a soft top-left accent glow (numpy)."""
-    tl, br = np.array([10, 19, 15]), np.array([15, 28, 23])
+    """Deep green diagonal gradient with an edge vignette for depth (numpy)."""
+    tl, br = np.array([9, 17, 13]), np.array([12, 24, 19])
     mid = (tl + br) / 2
     corners = np.array([[tl, mid], [mid, br]], dtype=np.float64)  # 2x2 -> upscaled
     grad = np.asarray(Image.fromarray(corners.astype(np.uint8)).resize((W, H), Image.BICUBIC),
                       dtype=np.float64)
     yy, xx = np.mgrid[0:H, 0:W]
-    dist = np.sqrt((xx - 120) ** 2 + (yy - 90) ** 2)
-    a = np.clip(1 - dist / 520, 0, 1)[..., None] * 0.16
-    out = grad * (1 - a) + np.array(ACCENT, dtype=np.float64) * a
+    d = np.sqrt(((xx - W / 2) / (W / 2)) ** 2 + ((yy - H / 2) / (H / 2)) ** 2)
+    vig = np.clip(1 - (d - 0.55) * 0.42, 0.68, 1.0)[..., None]
+    out = grad * vig
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGB").convert("RGBA")
+
+
+def _glow(base: Image.Image, gx: int, gy: int, radius: int, color: tuple,
+          strength: float) -> Image.Image:
+    """Composite a soft radial glow of `color` centred at (gx, gy) onto base."""
+    yy, xx = np.mgrid[0:H, 0:W]
+    a = (np.clip(1 - np.sqrt((xx - gx) ** 2 + (yy - gy) ** 2) / radius, 0, 1)[..., None] ** 2
+         * strength)
+    arr = np.asarray(base.convert("RGB"), dtype=np.float64)
+    out = arr * (1 - a) + np.array(color, dtype=np.float64) * a
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGB").convert("RGBA")
 
 
@@ -162,80 +179,96 @@ def render(result: dict) -> Optional[bytes]:
     if norm is None:
         return None
 
-    base = _background()
-    ch, cw, cx, cy, rad = 490, round(490 * 5 / 7), 64, 70, 18
+    ch, cw, cx, cy, rad = 486, round(486 * 5 / 7), 66, 72, 16
+    gc = _grade_color(norm["grade"])
 
-    # card art with drop shadow
+    # ── background: gradient + a grade-coloured glow behind the seal ──────────
+    base = _background()
+    x0 = cx + cw + 74
+    colW = W - x0 - 60
+    seal_cx, seal_cy, R = x0 + 92, 250, 90
+    base = _glow(base, seal_cx, seal_cy, 320, gc, 0.20)
+    base = _glow(base, cx + cw // 2, cy + ch // 2, 360, ACCENT, 0.07)
+
+    # ── card art: drop shadow + a slab-style frame ───────────────────────────
     card = _card_image(norm["image"], cw, ch, rad)
     if card is not None:
         shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sd = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-        ImageDraw.Draw(sd).rounded_rectangle([0, 0, cw - 1, ch - 1], radius=rad, fill=(0, 0, 0, 140))
-        shadow.paste(sd, (cx, cy + 18), sd)
-        shadow = shadow.filter(ImageFilter.GaussianBlur(20))
+        ImageDraw.Draw(sd).rounded_rectangle([0, 0, cw - 1, ch - 1], radius=rad, fill=(0, 0, 0, 150))
+        shadow.paste(sd, (cx, cy + 20), sd)
+        shadow = shadow.filter(ImageFilter.GaussianBlur(22))
         base = Image.alpha_composite(base, shadow)
         base.paste(card, (cx, cy), card)
 
     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     od = ImageDraw.Draw(overlay)
-    if card is not None:                        # hairline border on the card
+    if card is not None:
+        # slab bezel (grade-tinted) + inner hairline
+        od.rounded_rectangle([cx - 13, cy - 13, cx + cw + 12, cy + ch + 12], radius=rad + 8,
+                             outline=gc + (120,), width=2)
         od.rounded_rectangle([cx, cy, cx + cw - 1, cy + ch - 1], radius=rad,
-                             outline=(255, 255, 255, 26), width=2)
+                             outline=(255, 255, 255, 34), width=2)
+    od.ellipse([seal_cx - R, seal_cy - R, seal_cx + R, seal_cy + R], fill=gc + (24,))
 
     d = ImageDraw.Draw(base)
-    x0 = cx + cw + 56
-    colW = W - x0 - 64
 
-    def text(xy, s, font, fill):
-        d.text(xy, s, font=font, fill=fill, anchor="ls")
+    def text(xy, s, font, fill, anchor="ls"):
+        d.text(xy, s, font=font, fill=fill, anchor=anchor)
 
-    text((x0, cy + 22), "VIRIDIAN GRADING LAB", sg(22, 600), ACCENT)
+    # ── brand lockup ─────────────────────────────────────────────────────────
+    od.regular_polygon((x0 + 9, 104, 9), n_sides=4, rotation=0, fill=ACCENT + (255,))
+    text((x0 + 26, 112), "VIRIDIAN", sg(24, 700), INK)
+    text((x0 + 152, 112), "GRADING LAB", mono(17, 600), ACCENT)
 
-    gc = _grade_color(norm["grade"])
-    text((x0, cy + 86), "PSA", sg(26, 600), MUTE)
+    # ── grade seal ───────────────────────────────────────────────────────────
+    d.ellipse([seal_cx - R, seal_cy - R, seal_cx + R, seal_cy + R], outline=gc, width=5)
+    d.ellipse([seal_cx - R + 12, seal_cy - R + 12, seal_cx + R - 12, seal_cy + R - 12],
+              outline=_mix(gc, 0.45), width=2)
+    text((seal_cx, seal_cy - 50), "PSA", mono(20, 600), MUTE, anchor="mm")
     num = "—" if norm["grade"] is None else str(norm["grade"])
-    text((x0 - 4, cy + 210), num, sg(150, 700), gc)
-    num_w = d.textlength(num, font=sg(150, 700))
+    text((seal_cx + (0 if num == "—" else 2), seal_cy + 15), num, sg(112, 700), gc, anchor="mm")
+
     gname = "Graded slab" if norm["slab"] else GRADE_NAMES.get(norm["grade"], "Ungraded")
-    text((x0 + num_w + 24, cy + 150), gname, sg(40, 600), INK)
-    text((x0 + num_w + 26, cy + 188),
-         "verified grade" if norm["slab"] else "estimated grade", inter(22, 500), MUTE)
+    tx = seal_cx + R + 34
+    text((tx, seal_cy - 6), _fit(d, gname, sg(44, 600), x0 + colW - tx), sg(44, 600), INK)
+    text((tx, seal_cy + 34),
+         "VERIFIED GRADE" if norm["slab"] else "ESTIMATED GRADE", mono(18, 600), MUTE)
 
-    text((x0, cy + 300), _fit(d, norm["name"] or "Pokémon card", sg(46, 600), colW),
-         sg(46, 600), INK)
+    # ── divider ──────────────────────────────────────────────────────────────
+    od.line([x0, 372, x0 + colW, 372], fill=(255, 255, 255, 26), width=1)
+
+    # ── card identity ────────────────────────────────────────────────────────
+    text((x0, 418), _fit(d, norm["name"] or "Pokémon card", sg(46, 600), colW), sg(46, 600), INK)
     if norm["sub"]:
-        text((x0, cy + 338), _fit(d, norm["sub"], inter(26, 500), colW), inter(26, 500), MUTE)
+        text((x0, 452), _fit(d, norm["sub"], inter(26, 500), colW), inter(26, 500), MUTE)
 
-    # subgrade chips
-    chip_x, chip_y = x0, cy + 366
+    # ── subgrade chips ───────────────────────────────────────────────────────
+    chip_x, chip_y = x0, 476
     cf = mono(22, 600)
     for label, val in norm["subs"]:
         txt = f"{label} {'—' if val is None else val}"
         w = d.textlength(txt, font=cf) + 30
         if chip_x + w > x0 + colW:
             break
-        od.rounded_rectangle([chip_x, chip_y, chip_x + w, chip_y + 40], radius=12,
-                             fill=(255, 255, 255, 13), outline=(255, 255, 255, 26), width=1)
-        d.text((chip_x + 15, chip_y + 27), txt, font=cf, fill=(205, 216, 210), anchor="ls")
-        chip_x += w + 12
+        od.rounded_rectangle([chip_x, chip_y, chip_x + w, chip_y + 40], radius=11,
+                             fill=(255, 255, 255, 15), outline=(255, 255, 255, 30), width=1)
+        d.text((chip_x + 15, chip_y + 27), txt, font=cf, fill=(210, 220, 214), anchor="ls")
+        chip_x += w + 11
 
-    # value line
-    vy = cy + 452
-    if norm["rawUsd"] is not None or norm["gradedUsd"] is not None:
-        vx = x0
-        if norm["rawUsd"] is not None:
-            text((vx, vy), "Raw ", inter(27, 500), MUTE)
-            vx += d.textlength("Raw ", font=inter(27, 500))
-            rs = _money(norm["rawUsd"])
-            text((vx, vy), rs, inter(27, 500), INK)
-            vx += d.textlength(rs, font=inter(27, 500)) + 22
+    # ── value block ──────────────────────────────────────────────────────────
+    if norm["gradedUsd"] is not None or norm["rawUsd"] is not None:
         if norm["gradedUsd"] is not None:
-            lbl = "Graded " if norm["gradedReal"] else "PSA 10 est. "
-            text((vx, vy), lbl, inter(27, 500), MUTE)
-            vx += d.textlength(lbl, font=inter(27, 500))
-            text((vx, vy), _money(norm["gradedUsd"]), inter(27, 600), gc)
+            text((x0, 536), "GRADED VALUE" if norm["gradedReal"] else "PSA 10 VALUE (EST.)",
+                 mono(17, 600), MUTE)
+            text((x0, 580), _money(norm["gradedUsd"]), sg(46, 700), gc)
+        if norm["rawUsd"] is not None:
+            rx = x0 + 322
+            text((rx, 536), "RAW", mono(17, 600), MUTE)
+            text((rx, 578), _money(norm["rawUsd"]), inter(30, 600), INK)
 
-    text((x0, cy + 500), "Grade your card free — viridian", inter(22, 500), MUTE)
+    # ── footer CTA ───────────────────────────────────────────────────────────
+    text((x0, 614), "Grade any card free at viridian", inter(21, 500), _mix(MUTE, 0.85))
 
     base = Image.alpha_composite(base, overlay)
     buf = io.BytesIO()
