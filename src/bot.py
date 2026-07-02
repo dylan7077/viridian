@@ -25,10 +25,12 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 
-async def _grade_via_api(data: bytes) -> dict:
-    """Send the photo to the website to grade; return the result JSON."""
+async def _grade_via_api(data: bytes, back: bytes | None = None) -> dict:
+    """Send the photo(s) to the website to grade; return the result JSON."""
     form = aiohttp.FormData()
     form.add_field("file", data, filename="card.jpg", content_type="image/jpeg")
+    if back:
+        form.add_field("back_file", back, filename="back.jpg", content_type="image/jpeg")
     form.add_field("source", "bot")        # recorded into the shared feed as a bot grade
     timeout = aiohttp.ClientTimeout(total=150)
     async with aiohttp.ClientSession(timeout=timeout) as s:
@@ -189,23 +191,36 @@ def build_embed(result: dict) -> discord.Embed:
     # ── subgrades with visual bars (monospace table) ──
     emb.add_field(name="Subgrades", value=_subgrade_block(grade), inline=False)
 
+    # ── back of card (two-sided grade) ──
+    back = grade.get("back")
+    if back and not slab:
+        fo, bo = grade.get("front_overall"), back.get("overall")
+        note = ""
+        if fo is not None and bo is not None:
+            worse = " — the back is the weaker side" if bo < fo else \
+                    (" — the front is the weaker side" if fo < bo else "")
+            note = f"Front **{fo}** · Back **{bo}**{worse}; overall is the worse side."
+        emb.add_field(name="Back of card", value=(note or "Back graded.") + "\n" +
+                      _subgrade_block(back), inline=False)
+    elif not slab:
+        emb.add_field(name="\U0001f4a1 Tip",
+                      value="Attach a **second photo of the back** for a two-sided, "
+                            "PSA-style grade (back whitening is where most cards lose it).",
+                      inline=False)
+
     # ── card identification ──
     if match:
         card = match["card"]
         set_name = card.get("set", "?")
         num = card.get("number", "?")
-        method = match.get("method", "phash")
-        method_icon = "\U0001f3af" if method == "orb" else "\U0001f50d"
-        dist = match.get("distance", "?")
-        orb_s = match.get("orb_score")
-        extra = f" (ORB: {orb_s} matches)" if orb_s is not None else ""
-        emb.add_field(
-            name="Card",
-            value=f"**{card.get('name', '?')}** \u00b7 *{set_name}* #{num}\n"
-                  f"{method_icon} {method.upper()} match \u2014 "
-                  f"dist {dist}{extra}",
-            inline=False,
-        )
+        conf = match.get("confidence")
+        conf_str = f"{conf * 100:.0f}% confident" if conf is not None else "matched"
+        lines = [f"**{card.get('name', '?')}** \u00b7 *{set_name}* #{num}",
+                 f"\U0001f3af {conf_str}"]
+        if match.get("print_uncertain"):
+            lines.append("\u26a0\ufe0f Same artwork exists in several sets \u2014 the exact "
+                         "print (and so the price) may differ.")
+        emb.add_field(name="Card", value="\n".join(lines), inline=False)
         if card.get("image"):
             emb.set_thumbnail(url=card["image"])
     elif result.get("uncertain"):
@@ -226,31 +241,37 @@ def build_embed(result: dict) -> discord.Embed:
     # ── pricing ──
     value = result.get("value")
     if value and value.get("ok") and value.get("values"):
-        mult = value.get("graded_multiplier")
         lines = []
-        for v in value["values"]:
+        # GBP first \u2014 this is a UK server; the \u00a3 number is the one people act on.
+        for v in sorted(value["values"], key=lambda v: v["currency"] != "GBP"):
             sym = v.get("symbol", "$")
             raw = v.get("raw")
             graded = v.get("graded")
+            bold = "**" if v["currency"] == "GBP" else ""
             if raw is not None and graded is not None:
-                lines.append(
-                    f"{sym}**{graded:.2f}** graded \u00b7 {sym}{raw:.2f} raw")
+                lines.append(f"{bold}{sym}{graded:,.2f} graded \u00b7 {sym}{raw:,.2f} raw{bold}")
             elif raw is not None:
-                lines.append(f"{sym}{raw:.2f}")
+                lines.append(f"{bold}{sym}{raw:,.2f}{bold}")
+            if v.get("source"):
+                lines[-1] += f"  ({v['source']})"
         val_title = "Value"
-        if mult is not None:
-            val_title += f" (\u00d7{mult}\u00d7 graded premium)"
-        emb.add_field(name=val_title,
-                      value="\n".join(lines), inline=False)
+        if value.get("graded_real"):
+            val_title += " \u00b7 real graded comps"
+        emb.add_field(name=val_title, value="\n".join(lines), inline=False)
 
     # ── overlay ──
     if result.get("overlay", "").startswith("data:image/png;base64,"):
         emb.set_image(url="attachment://overlay.png")
 
     # ── capture quality ── a blurry/glare photo grades unreliably; tell them to retake.
+    quality = []
     if result.get("capture_warning"):
+        quality.append(result["capture_warning"])
+    if result.get("back_capture_warning"):
+        quality.append("Back photo: " + result["back_capture_warning"])
+    if quality:
         emb.add_field(name="\U0001f4f7 Photo quality",
-                      value=result["capture_warning"] + " A clearer photo grades more accurately.",
+                      value=" ".join(quality) + " A clearer photo grades more accurately.",
                       inline=False)
 
     # ── footer ──
@@ -303,7 +324,9 @@ async def on_message(message: discord.Message):
     async with message.channel.typing():
         try:
             data = await images[0].read()
-            result = await _grade_via_api(data)     # the website grades + records it
+            # 2nd image = the card BACK → two-sided, PSA-style worst-of grade.
+            back = await images[1].read() if len(images) > 1 else None
+            result = await _grade_via_api(data, back)   # the website grades + records it
             if result.get("busy"):
                 await message.reply(embed=discord.Embed(
                     title="⏳ One moment",
