@@ -15,6 +15,12 @@
     return sym + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  // colour helpers (keep sharecard.py in visual sync)
+  function hexRgb(h) { h = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
+  function rgba(hex, a) { const [r, g, b] = hexRgb(hex); return `rgba(${r},${g},${b},${a})`; }
+  function mix(hex, f) { const [r, g, b] = hexRgb(hex), bg = [12, 24, 19];
+    return `rgb(${[r, g, b].map((c, i) => Math.round(c * f + bg[i] * (1 - f))).join(",")})`; }
+
   // ---- toast + clipboard -------------------------------------------------
   V.toast = function (msg) {
     let t = document.getElementById("v-toast");
@@ -89,135 +95,152 @@
     cv.width = W; cv.height = H;
     const ctx = cv.getContext("2d");
 
-    // background
+    // ── background: deep green gradient + edge vignette ──
     const bg = ctx.createLinearGradient(0, 0, W, H);
-    bg.addColorStop(0, "#0a130f");
-    bg.addColorStop(1, "#0f1c17");
+    bg.addColorStop(0, "#091711");
+    bg.addColorStop(1, "#0c1813");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
-    // accent glow top-left
-    const glow = ctx.createRadialGradient(120, 90, 0, 120, 90, 520);
-    glow.addColorStop(0, "rgba(45,212,160,0.16)");
-    glow.addColorStop(1, "rgba(45,212,160,0)");
-    ctx.fillStyle = glow;
+    const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.62);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.30)");
+    ctx.fillStyle = vg;
     ctx.fillRect(0, 0, W, H);
 
-    // card image (5:7), rounded, with shadow
-    const ch = 490, cw = Math.round((ch * 5) / 7), cx = 64, cy = 70;
+    // geometry
+    const ch = 486, cw = Math.round((ch * 5) / 7), cx = 66, cy = 72, rad = 16;
+    const x0 = cx + cw + 74;
+    const colW = W - x0 - 60;
+    const gc = gradeColor(norm.grade);
+    const sealCx = x0 + 92, sealCy = 250, R = 90;
+
+    // grade-coloured glow behind the seal + soft accent halo behind the card
+    function radial(px, py, r, color, a) {
+      const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, rgba(color, a));
+      g.addColorStop(1, rgba(color, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    radial(sealCx, sealCy, 320, gc, 0.2);
+    radial(cx + cw / 2, cy + ch / 2, 360, ACCENT, 0.07);
+
+    // ── card art: shadow + slab bezel + hairline ──
     if (norm.image) {
       try {
         const img = await loadImg(norm.image);
         ctx.save();
-        ctx.shadowColor = "rgba(0,0,0,0.55)";
-        ctx.shadowBlur = 40;
-        ctx.shadowOffsetY = 18;
-        roundRect(ctx, cx, cy, cw, ch, 18);
+        ctx.shadowColor = "rgba(0,0,0,0.6)";
+        ctx.shadowBlur = 44;
+        ctx.shadowOffsetY = 20;
+        roundRect(ctx, cx, cy, cw, ch, rad);
         ctx.fillStyle = "#000";
         ctx.fill();
         ctx.restore();
         ctx.save();
-        roundRect(ctx, cx, cy, cw, ch, 18);
+        roundRect(ctx, cx, cy, cw, ch, rad);
         ctx.clip();
-        // cover-fit
         const ar = img.width / img.height, box = cw / ch;
         let dw = cw, dh = ch, dx = cx, dy = cy;
         if (ar > box) { dh = ch; dw = ch * ar; dx = cx - (dw - cw) / 2; }
         else { dw = cw; dh = cw / ar; dy = cy - (dh - ch) / 2; }
         ctx.drawImage(img, dx, dy, dw, dh);
         ctx.restore();
-        // hairline border
-        ctx.strokeStyle = "rgba(255,255,255,0.10)";
-        ctx.lineWidth = 1.5;
-        roundRect(ctx, cx, cy, cw, ch, 18);
+        ctx.strokeStyle = rgba(gc, 0.47);      // slab bezel, grade-tinted
+        ctx.lineWidth = 2;
+        roundRect(ctx, cx - 13, cy - 13, cw + 26, ch + 26, rad + 8);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,0.13)";  // inner hairline
+        ctx.lineWidth = 2;
+        roundRect(ctx, cx, cy, cw, ch, rad);
         ctx.stroke();
       } catch (e) { /* image unavailable — text panel still renders */ }
     }
 
-    const x0 = cx + cw + 56;       // right column origin
-    const colW = W - x0 - 64;
-
-    // wordmark
-    ctx.fillStyle = ACCENT;
-    ctx.font = "600 22px 'Space Grotesk', sans-serif";
+    // ── brand lockup ──
     ctx.textBaseline = "alphabetic";
-    ctx.fillText("VIRIDIAN GRADING LAB", x0, cy + 22);
+    ctx.textAlign = "left";
+    ctx.fillStyle = ACCENT;
+    ctx.fillRect(x0, 98, 13, 13);
+    ctx.fillStyle = INK;
+    ctx.font = "700 24px 'Space Grotesk', sans-serif";
+    ctx.fillText("VIRIDIAN", x0 + 26, 112);
+    ctx.fillStyle = ACCENT;
+    ctx.font = "700 17px 'Space Mono', monospace";
+    ctx.fillText("GRADING LAB", x0 + 152, 112);
 
-    // grade headline
-    const gc = gradeColor(norm.grade);
-    ctx.fillStyle = MUTE;
-    ctx.font = "600 26px 'Space Grotesk', sans-serif";
-    ctx.fillText("PSA", x0, cy + 86);
-    ctx.fillStyle = gc;
-    ctx.font = "700 150px 'Space Grotesk', sans-serif";
+    // ── grade seal ──
+    function circle(r) { ctx.beginPath(); ctx.arc(sealCx, sealCy, r, 0, Math.PI * 2); }
+    circle(R); ctx.fillStyle = rgba(gc, 0.09); ctx.fill();
+    circle(R); ctx.strokeStyle = gc; ctx.lineWidth = 5; ctx.stroke();
+    circle(R - 12); ctx.strokeStyle = mix(gc, 0.45); ctx.lineWidth = 2; ctx.stroke();
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = MUTE; ctx.font = "700 20px 'Space Mono', monospace";
+    ctx.fillText("PSA", sealCx, sealCy - 50);
     const numStr = norm.grade == null ? "—" : String(norm.grade);
-    ctx.fillText(numStr, x0 - 4, cy + 210);
-    const numW = ctx.measureText(numStr).width;
-    ctx.fillStyle = INK;
-    ctx.font = "600 40px 'Space Grotesk', sans-serif";
-    const gname = norm.slab ? "Graded slab" : (GRADE_NAMES[norm.grade] || "Ungraded");
-    ctx.fillText(gname, x0 + numW + 24, cy + 150);
-    ctx.fillStyle = MUTE;
-    ctx.font = "500 22px 'Inter', sans-serif";
-    ctx.fillText(norm.slab ? "verified grade" : "estimated grade", x0 + numW + 26, cy + 188);
+    ctx.fillStyle = gc; ctx.font = "700 112px 'Space Grotesk', sans-serif";
+    ctx.fillText(numStr, sealCx + (numStr === "—" ? 0 : 2), sealCy + 15);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
 
-    // card name + set
-    ctx.fillStyle = INK;
-    ctx.font = "600 46px 'Space Grotesk', sans-serif";
-    ctx.fillText(fitText(ctx, norm.name || "Pokémon card", colW), x0, cy + 300);
+    const tx = sealCx + R + 34;
+    ctx.fillStyle = INK; ctx.font = "600 44px 'Space Grotesk', sans-serif";
+    const gname = norm.slab ? "Graded slab" : (GRADE_NAMES[norm.grade] || "Ungraded");
+    ctx.fillText(fitText(ctx, gname, x0 + colW - tx), tx, sealCy - 6);
+    ctx.fillStyle = MUTE; ctx.font = "700 18px 'Space Mono', monospace";
+    ctx.fillText(norm.slab ? "VERIFIED GRADE" : "ESTIMATED GRADE", tx, sealCy + 34);
+
+    // ── divider ──
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, 372); ctx.lineTo(x0 + colW, 372); ctx.stroke();
+
+    // ── card identity ──
+    ctx.fillStyle = INK; ctx.font = "600 46px 'Space Grotesk', sans-serif";
+    ctx.fillText(fitText(ctx, norm.name || "Pokémon card", colW), x0, 418);
     if (norm.sub) {
-      ctx.fillStyle = MUTE;
-      ctx.font = "500 26px 'Inter', sans-serif";
-      ctx.fillText(fitText(ctx, norm.sub, colW), x0, cy + 338);
+      ctx.fillStyle = MUTE; ctx.font = "500 26px 'Inter', sans-serif";
+      ctx.fillText(fitText(ctx, norm.sub, colW), x0, 452);
     }
 
-    // subgrade chips
+    // ── subgrade chips ──
     let chipX = x0;
-    const chipY = cy + 366;
+    const chipY = 476;
     ctx.font = "700 22px 'Space Mono', monospace";
     (norm.subs || []).forEach(([label, val]) => {
       const txt = `${label} ${val == null ? "—" : val}`;
       const w = ctx.measureText(txt).width + 30;
       if (chipX + w > x0 + colW) return;
-      roundRect(ctx, chipX, chipY, w, 40, 12);
-      ctx.fillStyle = "rgba(255,255,255,0.05)";
+      roundRect(ctx, chipX, chipY, w, 40, 11);
+      ctx.fillStyle = "rgba(255,255,255,0.06)";
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.10)";
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
       ctx.lineWidth = 1;
       ctx.stroke();
-      ctx.fillStyle = "#cdd8d2";
+      ctx.fillStyle = "#d2dcd6";
       ctx.fillText(txt, chipX + 15, chipY + 27);
-      chipX += w + 12;
+      chipX += w + 11;
     });
 
-    // value
-    const vy = cy + 452;
-    if (norm.rawUsd != null || norm.gradedUsd != null) {
-      ctx.font = "500 27px 'Inter', sans-serif";
-      let vx = x0;
-      if (norm.rawUsd != null) {
-        ctx.fillStyle = MUTE;
-        ctx.fillText("Raw ", vx, vy);
-        vx += ctx.measureText("Raw ").width;
-        ctx.fillStyle = INK;
-        const rs = money("$", norm.rawUsd);
-        ctx.fillText(rs, vx, vy);
-        vx += ctx.measureText(rs).width + 22;
-      }
+    // ── value block ──
+    if (norm.gradedUsd != null || norm.rawUsd != null) {
       if (norm.gradedUsd != null) {
-        ctx.fillStyle = MUTE;
-        const lbl = norm.gradedReal ? "Graded " : "PSA 10 est. ";
-        ctx.fillText(lbl, vx, vy);
-        vx += ctx.measureText(lbl).width;
-        ctx.fillStyle = gc;
-        ctx.font = "600 27px 'Inter', sans-serif";
-        ctx.fillText(money("$", norm.gradedUsd), vx, vy);
+        ctx.fillStyle = MUTE; ctx.font = "700 17px 'Space Mono', monospace";
+        ctx.fillText(norm.gradedReal ? "GRADED VALUE" : "PSA 10 VALUE (EST.)", x0, 536);
+        ctx.fillStyle = gc; ctx.font = "700 46px 'Space Grotesk', sans-serif";
+        ctx.fillText(money("$", norm.gradedUsd), x0, 580);
+      }
+      if (norm.rawUsd != null) {
+        const rx = x0 + 322;
+        ctx.fillStyle = MUTE; ctx.font = "700 17px 'Space Mono', monospace";
+        ctx.fillText("RAW", rx, 536);
+        ctx.fillStyle = INK; ctx.font = "600 30px 'Inter', sans-serif";
+        ctx.fillText(money("$", norm.rawUsd), rx, 578);
       }
     }
 
-    // footer url
-    ctx.fillStyle = MUTE;
-    ctx.font = "500 22px 'Inter', sans-serif";
-    ctx.fillText("Grade your card free — viridian", x0, cy + 500);
+    // ── footer ──
+    ctx.fillStyle = mix(MUTE, 0.85); ctx.font = "500 21px 'Inter', sans-serif";
+    ctx.fillText("Grade any card free at viridian", x0, 614);
 
     return cv;
   };
