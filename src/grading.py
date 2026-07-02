@@ -745,12 +745,19 @@ def _combine(centering, corners, edges, surface) -> Optional[int]:
     subs = []   # (grade, base_weight, trust)
     if centering.get("grade") is not None:
         subs.append((centering["grade"], cen_base, cen_trust))
-    # Corners/edges are EXCLUDED from the grade math. Validated against real labeled cards
-    # (scripts/validate_labeled.py): they show ~0 clean-vs-damaged separation (corners -0.1,
-    # edges -0.5) — pure noise that only false-penalises good cards. They stay REPORTED as
+    # BLIND corner/edge heuristics are EXCLUDED from the grade math. Validated against real
+    # labeled cards (scripts/validate_labeled.py): ~0 clean-vs-damaged separation (corners
+    # -0.1, edges -0.5) — noise that only false-penalises good cards. They stay REPORTED as
     # low-confidence info. Surface DOES separate real damage (+2.2 grades, 81% balanced acc),
     # so it remains the down-pull evidence alongside centering.
+    #
+    # REFERENCE-aligned corner/edge reads (method='reference', refgrade.assess_defects) are
+    # a different animal: the print cancels in the aligned diff, so whitening/damage is a
+    # real measurement — those DO count, calibrated on the labeled populations.
     wear = [(surface["grade"], 0.30, _TRUST.get(surface.get("confidence"), 0.30))]
+    for sub in (corners, edges):
+        if sub.get("method") == "reference" and sub.get("grade") is not None:
+            wear.append((sub["grade"], 0.25, _TRUST.get(sub.get("confidence"), 0.30)))
     subs += wear
 
     wsum = sum(bw * tr for _, bw, tr in subs)
@@ -768,6 +775,12 @@ def _combine(centering, corners, edges, surface) -> Optional[int]:
     cap = 10
     for g, _, tr in subs:
         if tr >= 0.5 and g <= 3:
+            cap = min(cap, g + 1)
+    # PSA-style: one reliably-measured weak area drops the card to (about) that grade —
+    # "a card is only as good as its worst feature", with the documented one-grade
+    # leniency. Only reference-quality wear reads earn this power; heuristics never cap.
+    for g, _, tr in wear:
+        if tr >= 0.65 and g <= 8:
             cap = min(cap, g + 1)
 
     overall = min(anchor - penalty, cap)

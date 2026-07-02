@@ -310,16 +310,30 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
         try:
             ref = refgrade.load_reference(cid, c.get("image"))
             if ref is not None:
+                g = out["grade"]
+                # TAG-style defect read: align the clean reference onto the photo — the
+                # print cancels, real whitening/scratches survive. Upgrades corners/edges
+                # /surface from blind heuristics to calibrated measurements when it works.
+                # ponytail: this + measure_centering each compute a homography; share it
+                # if grade latency ever matters.
+                d = refgrade.assess_defects(result.warped, ref)
+                if d:
+                    # Corners/edges only: the whitening read is calibrated and separates
+                    # the labeled populations. Ref-surface lost its separation in the
+                    # canonical resample (fine scratches smooth away), so surface stays
+                    # on the validated blind top-hat signal.
+                    g["corners"], g["edges"] = d["corners"], d["edges"]
                 rc = refgrade.measure_centering(result.warped, ref)
                 if rc:
-                    g = out["grade"]
                     g["centering"] = rc
-                    g["overall"] = grading._combine(rc, g["corners"], g["edges"], g["surface"])
+                if d or rc:
+                    g["overall"] = grading._combine(g["centering"], g["corners"],
+                                                    g["edges"], g["surface"])
                     if back_img is not None:
                         g["front_overall"] = g["overall"]
                         g["overall"] = _worst(g["overall"], back_overall)
                     out["overlay"] = _to_data_uri(grading.annotate_detection(
-                        result.warped, rc, g["corners"], g["edges"]))
+                        result.warped, g["centering"], g["corners"], g["edges"]))
                     if not (label and label.get("grade") is not None):
                         price_grade = g["overall"]      # price off the refined grade
         except Exception:
