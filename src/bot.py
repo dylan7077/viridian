@@ -160,9 +160,10 @@ def build_embed(result: dict) -> discord.Embed:
     slab = result.get("slab")
 
     grade_source = slab.get("grade") if slab and slab.get("grade") is not None else overall
-    color = 0x2FE0B0 if (grade_source or 0) >= 9 else \
-            0xE6C97A if (grade_source or 0) >= 7 else \
-            0x8FA39B
+    # Grade→colour matches the share card (sharecard.py): gems gold, 7-8 viridian, low grey.
+    color = 0xE8C878 if (grade_source or 0) >= 9 else \
+            0x2DD4A0 if (grade_source or 0) >= 7 else \
+            0xD6DED9
     emoji = _GRADE_EMOJI.get(grade_source, "")
 
     match = result.get("match")
