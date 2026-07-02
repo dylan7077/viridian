@@ -6,7 +6,7 @@
   const input = $("#bfile"), drop = $("#bdrop"), tbody = $("#btbody"), table = $("#btable");
   const totals = $("#btotals"), progress = $("#bprogress"), progressText = $("#bprogressText");
 
-  let count = 0, totalGbp = 0, gradeSum = 0, gradeN = 0, running = false;
+  let count = 0, totalGbp = 0, pricedN = 0, gradeSum = 0, gradeN = 0, running = false;
 
   const gradeClass = (g) => g == null ? "g-none" : g >= 9 ? "g-gem" : g >= 7 ? "g-high" : "g-low";
   const money = (sym, n) => sym + Number(n).toLocaleString(undefined,
@@ -22,7 +22,7 @@
 
   function updateTotals() {
     totals.hidden = false;
-    $("#btValue").textContent = money("£", totalGbp);
+    $("#btValue").textContent = pricedN ? money("£", totalGbp) : "—";
     $("#btCount").textContent = count;
     $("#btAvg").textContent = gradeN ? (gradeSum / gradeN).toFixed(1) : "—";
   }
@@ -70,7 +70,7 @@
     tr.querySelector(".bt-val").classList.remove("bt-muted");
 
     count++;
-    if (gbp) totalGbp += gbp.val;
+    if (gbp) { totalGbp += gbp.val; pricedN += 1; }
     if (grade != null) { gradeSum += grade; gradeN += 1; }
     updateTotals();
   }
