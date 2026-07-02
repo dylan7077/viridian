@@ -86,9 +86,10 @@ def _apply_real_graded(value: dict, card: dict, grade) -> None:
         g = None
     if not g:
         return
-    usd = g["usd"] if g["usd"] is not None else (g["eur"] / 0.92 if g["eur"] else None)
-    eur = g["eur"] if g["eur"] is not None else (usd * 0.92 if usd else None)
-    real = {"USD": usd, "EUR": eur, "GBP": (usd * 0.79 if usd else None)}
+    fx = pricing.fx_from_usd()
+    usd = g["usd"] if g["usd"] is not None else (g["eur"] / fx["EUR"] if g["eur"] else None)
+    eur = g["eur"] if g["eur"] is not None else (usd * fx["EUR"] if usd else None)
+    real = {"USD": usd, "EUR": eur, "GBP": (usd * fx["GBP"] if usd else None)}
     for e in value["values"]:
         if real.get(e["currency"]) is not None:
             e["graded"] = round(real[e["currency"]], 2)

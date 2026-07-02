@@ -20,9 +20,29 @@ GRADE_MULTIPLIER = {
 }
 
 
-# Approximate FX from USD; EUR is shown from real Cardmarket data when available.
+# Fallback FX if offline; live ECB rates are used when reachable.
 FX_FROM_USD = {"USD": 1.0, "EUR": 0.92, "GBP": 0.79}
 SYMBOL = {"USD": "$", "EUR": "€", "GBP": "£"}
+
+_fx = {"rates": None, "ts": 0.0}
+
+
+def fx_from_usd() -> dict:
+    """Live USD→{EUR,GBP} (ECB via frankfurter.app, no key), cached for a day.
+    A flat hardcoded rate drifts several % a year — real money on a Charizard."""
+    import time
+    if _fx["rates"] and time.time() - _fx["ts"] < 86400:
+        return _fx["rates"]
+    try:
+        r = requests.get("https://api.frankfurter.app/latest",
+                         params={"from": "USD", "to": "EUR,GBP"}, timeout=8)
+        r.raise_for_status()
+        rates = r.json()["rates"]
+        _fx["rates"] = {"USD": 1.0, "EUR": float(rates["EUR"]), "GBP": float(rates["GBP"])}
+        _fx["ts"] = time.time()
+        return _fx["rates"]
+    except Exception:
+        return _fx["rates"] or FX_FROM_USD
 
 
 def _usd_market(pricing: dict) -> Optional[float]:
@@ -61,7 +81,8 @@ def get_card_value(card_id: str, grade: Optional[int]) -> dict:
     pricing = card.get("pricing") or {}
     usd = _usd_market(pricing)
     eur = _eur_market(pricing)
-    base_usd = usd if usd is not None else (eur / FX_FROM_USD["EUR"] if eur else None)
+    fx = fx_from_usd()
+    base_usd = usd if usd is not None else (eur / fx["EUR"] if eur else None)
 
     image = card.get("image") or ""
     out = {
@@ -85,7 +106,14 @@ def get_card_value(card_id: str, grade: Optional[int]) -> dict:
     except Exception:
         uk = None
     for cur in ("USD", "EUR", "GBP"):
-        raw = eur if (cur == "EUR" and eur is not None) else base_usd * FX_FROM_USD[cur]
+        if cur == "EUR" and eur is not None:
+            raw = eur
+        elif cur == "GBP" and eur is not None:
+            # Cardmarket EUR is the real European market a UK buyer actually pays —
+            # convert THAT at the live rate rather than guessing from US prices.
+            raw = eur * fx["GBP"] / fx["EUR"]
+        else:
+            raw = base_usd * fx[cur]
         entry = {"currency": cur, "symbol": SYMBOL[cur], "raw": round(raw, 2)}
         if mult is not None:
             entry["graded"] = round(raw * mult, 2)
