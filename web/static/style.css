@@ -15,7 +15,7 @@
   --accent-dim: rgba(45, 212, 160, 0.1);
   --accent-glow: rgba(45, 212, 160, 0.16);
   --accent-ink: #04140e;
-  --gold: #e7c978;
+  --gold: #e8c878;        /* matches the share card seal/value gold */
   --danger: #e8736a;
   --holo-purple: rgba(168, 85, 247, 0.45);
   --holo-cyan: rgba(34, 211, 238, 0.40);
@@ -296,6 +296,8 @@ main { flex: 1; display: flex; justify-content: center; }
 .kv .k { color: var(--muted); }
 .kv .v { font-family: var(--mono); }
 .value-big { font-size: 1.35rem; color: var(--accent); font-family: var(--display); font-weight: 600; }
+.value-big.vb-gold { color: var(--gold); }   /* gem grades → gold, matching the share card */
+.value-big.vb-low { color: var(--text); }
 
 .verdict { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 22px; }
 .v-col { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }

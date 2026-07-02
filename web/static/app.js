@@ -453,8 +453,9 @@ function render(r) {
     ordered.forEach((x, i) => {
       const val = graded ? x.graded : x.raw;
       const src = x.source ? ` <span class="v-src">${x.source}</span>` : "";
+      const vbCls = i === 0 ? " value-big " + (overall >= 9 ? "vb-gold" : overall >= 7 ? "" : "vb-low") : "";
       html += `<div class="kv"><span class="k">${x.currency}</span>
-        <span class="v ${i === 0 ? "value-big" : ""}">${x.symbol}${val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}${src}</span></div>`;
+        <span class="v${vbCls}">${x.symbol}${val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}${src}</span></div>`;
     });
   }
 
