@@ -15,6 +15,7 @@ const analyzeBtn = $("#analyze");
 const resultPanel = $("#result");
 const resultBody = $("#result-body");
 let selectedFile = null;
+let scanFiles = [];
 
 // ---- back-of-card photo (required) ----------------------------------------
 let backFile = null;
@@ -96,9 +97,10 @@ function animateNum(el, from, to, dur = 650) {
 })();
 
 // ---- upload ---------------------------------------------------------------
-function setFile(file) {
+function setFile(file, scan) {
   if (!file || !file.type.startsWith("image/")) return;
   selectedFile = file;
+  scanFiles = Array.isArray(scan) ? scan : [];   // multi-angle tilt frames (camera only)
   if (backSection) backSection.hidden = false;   // now ask for the back
   updateAnalyzeEnabled();                         // stays disabled until back is added too
   if (window.Crop) {
@@ -140,6 +142,7 @@ async function analyze() {
   const cn = window.Crop && Crop.corners();
   if (cn) fd.append("corners", JSON.stringify(cn));
   if (backFile) fd.append("back_file", backFile);
+  for (const s of scanFiles) fd.append("scan", s);   // multi-angle tilt frames → depth scan
   try {
     const res = await fetch("/api/grade", { method: "POST", body: fd });
     render(await res.json());

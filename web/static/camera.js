@@ -11,6 +11,8 @@ window.Camera = (function () {
   const MARGIN = 0.06;                 // expand the crop a touch so a slightly-off card isn't clipped
   const BURST_FRAMES = 6;              // frames per capture — glare moves between them, wear doesn't
   const BURST_MS = 420;                // burst window; per-pixel MIN suppresses the moving glare
+  const SCAN_FRAMES = 6;              // phase-2 tilt frames for the depth/surface scan
+  const SCAN_MS = 1600;              // tilt window — user rocks the card under their light
 
   let stream = null;
   let modal = null;
@@ -167,6 +169,13 @@ window.Camera = (function () {
     const tctx = tmp.getContext("2d", { willReadFrequently: true });
     let acc = null, n = 0;
 
+    // Phase-2 tilt frames for the depth scan, downscaled to keep the upload small.
+    const scanFrames = [];
+    const sScale = Math.min(1, 720 / ch);
+    const scv = document.createElement("canvas");
+    scv.width = Math.round(cw * sScale); scv.height = Math.round(ch * sScale);
+    const sctx = scv.getContext("2d");
+
     const finish = () => {
       const out = document.createElement("canvas");
       out.width = cw; out.height = ch;
@@ -174,12 +183,24 @@ window.Camera = (function () {
       out.toBlob((blob) => {
         if (!blob) { close(); return; }
         const file = new File([blob], `card-${Date.now()}.jpg`, { type: "image/jpeg" });
-        const cb = onShot;
+        const cb = onShot, frames = scanFrames.slice();
         close();
-        if (cb) cb(file);
+        if (cb) cb(file, frames);
       }, "image/jpeg", 0.92);
     };
 
+    // Phase 2: snapshot a few frames while the user tilts the card, for the depth scan.
+    const scanGrab = (i) => {
+      if (!modal) { finish(); return; }
+      sctx.drawImage(video, x0, y0, cw, ch, 0, 0, scv.width, scv.height);
+      scv.toBlob((b) => {
+        if (b) scanFrames.push(new File([b], `scan-${i}.jpg`, { type: "image/jpeg" }));
+        if (i + 1 < SCAN_FRAMES) setTimeout(() => scanGrab(i + 1), SCAN_MS / SCAN_FRAMES);
+        else finish();
+      }, "image/jpeg", 0.85);
+    };
+
+    // Phase 1: short de-glare burst → a crisp main photo, then hand off to the tilt scan.
     const grab = () => {
       if (!modal) return;               // cancelled mid-burst
       tctx.drawImage(video, x0, y0, cw, ch, 0, 0, cw, ch);
@@ -190,7 +211,10 @@ window.Camera = (function () {
         for (let i = 0; i < d.length; i++) if (d[i] < acc[i]) acc[i] = d[i];
       }
       if (++n < BURST_FRAMES) setTimeout(grab, BURST_MS / BURST_FRAMES);
-      else finish();
+      else {
+        if (hint) { hint.textContent = "Now tilt the card slowly…"; hint.classList.remove("ok"); }
+        setTimeout(() => scanGrab(0), 150);
+      }
     };
     grab();
   }
