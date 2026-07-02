@@ -197,6 +197,11 @@ def activity_page():
     return _page("activity.html")
 
 
+@app.get("/batch")
+def batch_page():
+    return _page("batch.html")
+
+
 @app.get("/api/activity")
 def list_activity(limit: int = 24):
     """Recent grades from the website and the Discord bot, newest first."""
@@ -535,13 +540,16 @@ async def _do_grade(file: UploadFile, corners, source, back_file=None, back_corn
             result["share_url"] = f"{config.WEB_BASE_URL}/g/{token}"
         # Record to the shared feed. The Discord bot posts source="bot" through this same
         # endpoint, so both surfaces land in one DB-backed feed.
-        src = "bot" if source == "bot" else "web"
-        entry = await run_in_threadpool(activity.record, src, result)
-        # Mirror WEBSITE grades to the #grading-results feed via the webhook. Bot grades are
-        # NOT mirrored here — the bot posts them into that channel itself (with link buttons),
-        # so mirroring would double-post.
-        if entry and src == "web" and discord_webhook.enabled():
-            await run_in_threadpool(discord_webhook.post_result, result, "the website")
+        # Batch/collection grades are NOT fed to the public feed or webhook — one
+        # collection could be dozens of cards and would flood both.
+        if source != "batch":
+            src = "bot" if source == "bot" else "web"
+            entry = await run_in_threadpool(activity.record, src, result)
+            # Mirror WEBSITE grades to the #grading-results feed via the webhook. Bot grades
+            # are NOT mirrored here — the bot posts them into that channel itself (with link
+            # buttons), so mirroring would double-post.
+            if entry and src == "web" and discord_webhook.enabled():
+                await run_in_threadpool(discord_webhook.post_result, result, "the website")
     except Exception:
         logging.getLogger("viridian").exception("post-grade side-effect failed (grade still returned)")
     return JSONResponse(result)

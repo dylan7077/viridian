@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Value your collection — Viridian</title>
+  <meta name="description" content="What's your Pokémon collection worth? Drop your cards — each is identified, graded, and priced, with a running total. Free." />
+  <meta property="og:title" content="What's your Pokémon collection worth?" />
+  <meta property="og:description" content="Drop your cards — each identified, graded, and priced, with a live total. Free." />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=9" />
+  <link rel="stylesheet" href="/static/batch.css?v=1" />
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <img class="brand-mark" src="/static/logo.svg" alt="" />
+        <span class="brand-name">Viridian</span>
+      </a>
+      <nav class="nav-links">
+        <a href="/">Grade</a>
+        <a href="/batch" class="is-active">Collection</a>
+        <a href="/library">Library</a>
+        <a href="/activity">Activity</a>
+        <a href="/about">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="batch-wrap">
+      <p class="hero-eyebrow">Value your collection</p>
+      <h1>What's your collection worth?</h1>
+      <p class="sub">Drop photos of your cards — each one is identified, graded, and priced, with a running total.</p>
+
+      <label id="bdrop" class="dropzone">
+        <input id="bfile" type="file" accept="image/*" multiple hidden />
+        <div class="dz-inner">
+          <div class="dz-icon">↑</div>
+          <p class="dz-main">Drop your cards or choose photos</p>
+          <p class="dz-sub">One photo per card · front only · up to 24 at a time</p>
+        </div>
+      </label>
+
+      <div id="btotals" class="btotals" hidden>
+        <div class="bt-stat"><span class="bt-num" id="btValue">£0.00</span><span class="bt-lbl">total value</span></div>
+        <div class="bt-stat"><span class="bt-num" id="btCount">0</span><span class="bt-lbl">cards</span></div>
+        <div class="bt-stat"><span class="bt-num" id="btAvg">—</span><span class="bt-lbl">avg grade</span></div>
+      </div>
+
+      <div id="bprogress" class="bprogress" hidden><span id="bprogressText">Grading…</span></div>
+
+      <div class="btable-wrap">
+        <table id="btable" class="btable" hidden>
+          <thead>
+            <tr><th class="bt-th-img"></th><th>Card</th><th class="bt-th-c">Grade</th><th class="bt-th-r">Value</th></tr>
+          </thead>
+          <tbody id="btbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-foot">
+    <span class="foot-note">Estimate only · not affiliated with PSA</span>
+    <span class="foot-meta">Values are indicative market prices</span>
+  </footer>
+
+  <script src="/static/batch.js?v=1"></script>
+</body>
+</html>
