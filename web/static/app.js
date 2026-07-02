@@ -110,7 +110,8 @@ function setFile(file, scan) {
     preview.hidden = false;
   }
 }
-fileInput.addEventListener("change", (e) => setFile(e.target.files[0]));
+fileInput.addEventListener("change", (e) =>
+  setFile(e.target.files[0], Array.from(e.target.files).slice(1)));   // extras = angle frames
 
 // "Take a photo" → in-app camera with a card-outline guide; the capture is already
 // cropped to the template, so it drops straight into the same flow as an upload.
@@ -125,7 +126,10 @@ if (takePhotoBtn) {
   dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("drag"); }));
 ["dragleave", "drop"].forEach((ev) =>
   dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("drag"); }));
-dropzone.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
+dropzone.addEventListener("drop", (e) => {
+  const f = e.dataTransfer.files;
+  setFile(f[0], Array.from(f).slice(1));   // extra dropped photos = angle frames for the depth scan
+});
 analyzeBtn.addEventListener("click", analyze);
 
 async function analyze() {

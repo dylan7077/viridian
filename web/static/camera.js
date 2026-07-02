@@ -148,6 +148,8 @@ window.Camera = (function () {
     const frame = modal.querySelector("#camFrame");
     const g = guideVideoRect(video, frame);
     if (!g) return;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }  // stop alignment; capturing now
+    frame.classList.add("aligned");                            // lock the frame green during capture
     const vW = g.vW, vH = g.vH;
 
     let { x0, y0, x1, y1 } = g;
