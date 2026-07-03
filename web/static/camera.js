@@ -87,13 +87,20 @@ window.Camera = (function () {
   const BAND = 0.045;                 // band thickness as a fraction of guide size
   const EDGE_MIN = 14;                // min inside/outside luminance gap (0..255)
   const NEED = 4;                     // frames of agreement before flipping state
+  // Glare: bright + desaturated pixel (blown highlight / holo flare), same test as the
+  // server's assess_capture_quality (v>250 & s<30 on a 0-255 scale). Fraction threshold
+  // a touch more lenient than the server's 0.03 — live video is noisier than a still photo
+  // and a flickery warning is worse than a slightly late one.
+  const GLARE_V = 248, GLARE_SAT = 0.12, GLARE_FRAC = 0.045;
   let acanvas = null, actx = null;
 
-  function edgeAligned(video) {
+  // Combined per-tick read: alignment (edge-step test) + glare (blown-highlight fraction)
+  // off the SAME down-sampled frame, so glare detection costs nothing extra.
+  function frameCheck(video) {
     const frame = modal && modal.querySelector("#camFrame");
-    if (!frame) return false;
+    if (!frame) return null;
     const g = guideVideoRect(video, frame);
-    if (!g) return false;
+    if (!g) return null;
     if (!acanvas) { acanvas = document.createElement("canvas"); actx = acanvas.getContext("2d", { willReadFrequently: true }); }
     const sH = Math.round(SAMP_W * g.vH / g.vW);
     acanvas.width = SAMP_W; acanvas.height = sH;
@@ -118,7 +125,22 @@ window.Camera = (function () {
     const bottom = Math.abs(band(X0, X1, Y1 - d, Y1, true)  - band(X0, X1, Y1, Y1 + d, true));
     const left   = Math.abs(band(Y0, Y1, X0, X0 + d, false) - band(Y0, Y1, X0 - d, X0, false));
     const right  = Math.abs(band(Y0, Y1, X1 - d, X1, false) - band(Y0, Y1, X1, X1 + d, false));
-    return Math.min(top, bottom, left, right) >= EDGE_MIN;
+    const aligned = Math.min(top, bottom, left, right) >= EDGE_MIN;
+
+    let blown = 0, n = 0;
+    const gx0 = Math.max(0, Math.round(X0)), gx1 = Math.min(SAMP_W, Math.round(X1));
+    const gy0 = Math.max(0, Math.round(Y0)), gy1 = Math.min(sH, Math.round(Y1));
+    for (let y = gy0; y < gy1; y += 3) {
+      for (let x = gx0; x < gx1; x += 3) {
+        const i = (y * SAMP_W + x) * 4;
+        const r = px[i], gg = px[i + 1], b = px[i + 2];
+        const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+        const sat = mx === 0 ? 0 : (mx - mn) / mx;
+        if (mx > GLARE_V && sat < GLARE_SAT) blown++;
+        n++;
+      }
+    }
+    return { aligned, glare: n ? blown / n > GLARE_FRAC : false };
   }
 
   function startAlignLoop() {
@@ -130,13 +152,18 @@ window.Camera = (function () {
       if (!modal) return;
       if (ts - last > 120) {                 // ~8 checks/sec is plenty
         last = ts;
-        let ok = false;
-        try { ok = edgeAligned(video); } catch { ok = false; }
+        let res = null;
+        try { res = frameCheck(video); } catch { res = null; }
+        const ok = !!(res && res.aligned);
         alignHits = ok ? Math.min(NEED, alignHits + 1) : 0;
         const aligned = alignHits >= NEED;
         frame.classList.toggle("aligned", aligned);
-        hint.textContent = aligned ? "Looks good — hold steady and snap" : "Line the card up inside the frame";
-        hint.classList.toggle("ok", aligned);
+        const glare = !!(res && res.glare);
+        hint.classList.toggle("warn", aligned && glare);
+        hint.classList.toggle("ok", aligned && !glare);
+        hint.textContent = !aligned ? "Line the card up inside the frame"
+          : glare ? "Glare detected — tilt away from the light"
+          : "Looks good — hold steady and snap";
       }
       rafId = requestAnimationFrame(tick);
     };

@@ -498,6 +498,7 @@ body.cam-open { overflow: hidden; }
   font-weight: 500; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); pointer-events: none;
   transition: color .15s ease; }
 .cam-hint.ok { color: var(--accent); }
+.cam-hint.warn { color: var(--gold); }
 
 .cam-controls { position: absolute; left: 0; right: 0;
   bottom: max(28px, env(safe-area-inset-bottom)); display: flex; align-items: center;
