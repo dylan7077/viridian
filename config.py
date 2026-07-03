@@ -43,6 +43,13 @@ ORB_MIN_GOOD = int(os.getenv("ORB_MIN_GOOD", "12"))     # good matches for confi
 # pHash shortlist size fed to the global-ORB matcher. Matching against ~200 of 20k
 # cards is ~140x faster than scanning all of them, with no real accuracy loss.
 ORB_PHASH_SHORTLIST = int(os.getenv("ORB_PHASH_SHORTLIST", "200"))
+# Last-resort tier: a full no-pHash-gate scan against every card when all faster tiers
+# missed. Measured on real photos (2026-07-03): only rescues ~5-10% of misses and costs
+# several seconds per call (vs sub-second for the gated tiers) — but that cost is paid
+# ONLY on a request that would otherwise return "couldn't identify" outright, so it's a
+# strictly-positive trade. Flag exists to kill it fast if VPS latency proves worse than
+# measured locally.
+ORB_GLOBAL_FALLBACK = os.getenv("ORB_GLOBAL_FALLBACK", "1") not in ("0", "false", "False")
 
 # Canonical size we warp every detected card to before analysis.
 # Pokemon cards are 2.5" x 3.5" (a 5:7 ratio).

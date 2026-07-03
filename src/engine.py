@@ -16,7 +16,7 @@ import numpy as np
 import config
 
 _log = logging.getLogger("viridian.slab")
-from src import grading, pricing, slab, graded_pricing, refgrade, onnx_grader, backgrade
+from src import grading, pricing, slab, graded_pricing, refgrade, onnx_grader, backgrade, train_harvest
 from src.matching import CardIndex
 from src.orb_index import OrbIndex
 
@@ -161,6 +161,18 @@ def _identify(warped: np.ndarray, index: CardIndex, oi: OrbIndex) -> Optional[di
         gr = q(img, top_n)
         if gr and gr.get("confident"):
             gr["variant"] = name
+            return gr
+        if gr and (best is None or gr.get("confidence", 0) > best.get("confidence", 0)):
+            best = gr
+
+    # Last resort: every faster tier is pHash-gated, so a photo whose pHash ranks the
+    # true card outside even the wide shortlist never gets an ORB vote at all. Drop the
+    # gate entirely and scan against the full index — several seconds, but only paid
+    # here because everything faster already missed.
+    if config.ORB_GLOBAL_FALLBACK:
+        gr = oi.query(warped)
+        if gr and gr.get("confident"):
+            gr["variant"] = "global"
             return gr
         if gr and (best is None or gr.get("confidence", 0) > best.get("confidence", 0)):
             best = gr
@@ -342,6 +354,11 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
                 rc = refgrade.measure_centering(result.warped, ref)
                 if rc:
                     g["centering"] = rc
+                if d:
+                    # Real photo + a confident reference alignment = a real, trustworthy
+                    # label. Harvest it for a future retrain on real data instead of the
+                    # synthetic set FINDINGS.md already showed doesn't generalize.
+                    train_harvest.maybe_harvest(result.warped, cid, d, rc, d.get("inliers", 0))
                 if d or rc:
                     g["overall"] = grading._combine(g["centering"], g["corners"],
                                                     g["edges"], g["surface"])
