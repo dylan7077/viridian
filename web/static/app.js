@@ -147,11 +147,25 @@ async function analyze() {
   if (cn) fd.append("corners", JSON.stringify(cn));
   if (backFile) fd.append("back_file", backFile);
   for (const s of scanFiles) fd.append("scan", s);   // multi-angle tilt frames → depth scan
+
+  // fetch() has no default timeout — a stalled mobile connection (or a slow cold-start
+  // on the server) would otherwise leave the user staring at "ANALYZING…" forever with
+  // zero feedback. 60s comfortably covers the slowest real path (a cold global-identify
+  // fallback) while still bounding the wait.
+  const ctrl = new AbortController();
+  const bail = setTimeout(() => ctrl.abort(), 60000);
   try {
-    const res = await fetch("/api/grade", { method: "POST", body: fd });
-    render(await res.json());
+    const res = await fetch("/api/grade", { method: "POST", body: fd, signal: ctrl.signal });
+    const json = await res.json();
+    clearTimeout(bail);
+    render(json);
   } catch (err) {
-    resultBody.innerHTML = `<div class="banner error">Request failed: ${err}</div>`;
+    clearTimeout(bail);
+    resultBody.innerHTML = `<div class="banner error">${
+      err && err.name === "AbortError"
+        ? "This is taking too long — check your connection and try again."
+        : `Request failed: ${err}`
+    }</div>`;
   }
 }
 

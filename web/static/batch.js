@@ -42,11 +42,16 @@
     fd.append("source", "batch");
     let res = null;
     for (let attempt = 0; attempt < 5; attempt++) {
+      // fetch() has no default timeout — bound each card so one stalled connection
+      // can't hang the whole collection run.
+      const ctrl = new AbortController();
+      const bail = setTimeout(() => ctrl.abort(), 60000);
       try {
-        const r = await fetch("/api/grade", { method: "POST", body: fd });
+        const r = await fetch("/api/grade", { method: "POST", body: fd, signal: ctrl.signal });
         res = await r.json();
         if (r.status === 503 && res && res.busy) { await new Promise((x) => setTimeout(x, 1500)); continue; }
       } catch (e) { res = null; }
+      finally { clearTimeout(bail); }
       break;
     }
 
