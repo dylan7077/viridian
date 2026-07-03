@@ -107,12 +107,39 @@ def assess_back_defects(back_card: np.ndarray) -> Optional[dict]:
     su, vu = hu[..., 1].astype(np.int16), hu[..., 2].astype(np.int16)
     sr, vr = hr[..., 1].astype(np.int16), hr[..., 2].astype(np.int16)
     k5 = np.ones((5, 5), np.uint8)
-    # Whitening: photo lost the saturation the reference has here AND is bright. Compare
-    # against the LEAST-saturated reference pixel in the 5x5 neighbourhood (erode) so a
-    # 1-2px misalignment at a swirl edge can't false-positive — only genuine colour loss
-    # (below even the dimmest nearby reference) survives.
-    sr_lo = cv2.erode(sr.astype(np.uint8), k5).astype(np.int16)
-    white = (su < sr_lo - 30) & (su < 65) & (vu > 120) & cover
+    # Whitening, SELF-CALIBRATED to THIS photo (mirrors refgrade.assess_defects — see its
+    # comment for why). Comparing photo saturation straight against the REFERENCE's
+    # saturation (the earlier version here) breaks on any photo with broad glare/exposure
+    # shift: a glossy back photographed under a light source desaturates the WHOLE frame,
+    # not just real wear, and the whole card reads as "whitened". Measured on 45 real back
+    # photos: that bug alone put the median corner/edge grade at 3 (93% flagged <=8) even
+    # on visually fine cards. Self-calibrating against this photo's OWN inner-design
+    # saturation (like the front's own border-band baseline) fixes it — a uniform glare
+    # shift moves the baseline too, so only REAL local colour loss stands out.
+    ref_whiteish = ((sr < 50) & (vr > 180)).astype(np.uint8)   # naturally-light ref areas
+    ref_white_near = cv2.dilate(ref_whiteish, k5) > 0                # (Poké Ball highlight)
+    # Per-SIDE baseline: a directional glare/light source desaturates one side of a
+    # glossy back far more than the others (measured on real photos — a global or
+    # centre-sampled baseline doesn't compensate for that). Sample near each side's own
+    # mid-band, same as the front's border-band self-calibration, so each strip is judged
+    # against how THIS PHOTO renders colour on THAT SAME SIDE, not the opposite one.
+    o2 = int(min(h, w) * 0.03)
+    mh, mw = slice(int(h * 0.35), int(h * 0.65)), slice(int(w * 0.35), int(w * 0.65))
+    side_bands = {
+        "T": (slice(o2, o2 * 2), mw), "B": (slice(h - o2 * 2, h - o2), mw),
+        "L": (mh, slice(o2, o2 * 2)), "R": (mh, slice(w - o2 * 2, w - o2)),
+    }
+
+    def side_baseline(ys, xs):
+        patch, cpatch = su[ys, xs], cover[ys, xs]
+        return float(np.median(patch[cpatch])) if cpatch.any() else 0.0
+
+    white = np.zeros((h, w), bool)
+    for ys, xs in side_bands.values():
+        base = side_baseline(ys, xs)
+        if base > 30:   # this side must render with SOME colour to measure loss against
+            white[ys, xs] = ((su[ys, xs] < 0.5 * base) & (vu[ys, xs] > 120)
+                             & ~ref_white_near[ys, xs] & cover[ys, xs])
     # Dark damage: markedly darker than the (exposure-matched) reference — dirt/crease.
     mu, mr = float(np.median(vu[cover])), float(np.median(vr[cover]))
     vu_n = np.clip(vu * (mr / mu), 0, 255).astype(np.int16) if mu > 1 else vu
@@ -173,16 +200,15 @@ def grade_back(back_card: np.ndarray) -> dict:
     if centering:
         centering["method"] = "reference-back"
     no_center = {"ok": False, "grade": None, "note": "Couldn't align the back to the reference."}
-    # Preferred: reference-difference whitening (cancels the printed swirl/logo) + a flaw
-    # overlay. Falls back to the blind white-on-blue mask when the back won't align.
-    d = assess_back_defects(back_card)
-    if d:
-        return {
-            "centering": centering or no_center,
-            "corners": d["corners"], "edges": d["edges"],
-            "surface": grading.assess_surface(back_card),   # keep the validated blind surface
-            "overlay_img": d["overlay_img"],
-        }
+    # DISABLED (2026-07-03): assess_back_defects's reference-difference whitening test
+    # compares the photo's saturation straight against the REFERENCE's — measured on 45
+    # real back photos, that broke badly under directional glare (a light source hitting
+    # one side of a glossy back desaturates that side far more than the rest), putting the
+    # median corner/edge grade at 3 even on visually fine cards. A self-calibrated retry
+    # (per-side baseline, matching the front's proven approach) still didn't separate
+    # cleanly — this needs a broader labeled set + more time, not a quick patch, while it's
+    # live and actively wrong. Falling back to the blind heuristic below (weaker signal,
+    # but not confidently, systematically broken) until it's properly recalibrated.
     white = _white_mask(back_card)
     return {
         "centering": centering or no_center,
