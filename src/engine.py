@@ -7,11 +7,14 @@ Keeping this in one place means the bot and the website always agree.
 from __future__ import annotations
 
 import base64
+import io
 import logging
+import threading
 from typing import Optional
 
 import cv2
 import numpy as np
+from PIL import Image
 
 import config
 
@@ -29,12 +32,26 @@ def _to_data_uri(img: np.ndarray) -> Optional[str]:
 
 # Loaded once and reused (the index can be large).
 _index: Optional[CardIndex] = None
+_index_stamp = None
+_index_lock = threading.Lock()
 
 
 def get_index() -> CardIndex:
-    global _index
-    if _index is None:
-        _index = CardIndex()
+    global _index, _index_stamp
+    try:
+        stat = config.INDEX_PATH.stat()
+        stamp = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        stamp = None
+    with _index_lock:
+        if _index is None or stamp != _index_stamp:
+            try:
+                updated = CardIndex()
+            except (OSError, ValueError, KeyError):
+                if _index is None:
+                    raise
+            else:
+                _index, _index_stamp = updated, stamp
     return _index
 
 
@@ -45,7 +62,14 @@ def get_orb_index() -> Optional[OrbIndex]:
     global _orb_index
     if _orb_index is None:
         _orb_index = OrbIndex()
+    else:
+        _orb_index.maybe_reload()
     return _orb_index
+
+
+def _orb_covers_index(index: CardIndex, oi: Optional[OrbIndex]) -> bool:
+    """Do not use a stale global ORB DB to rule out cards it does not contain."""
+    return bool(oi and oi.ok and all(c.get("id") in oi._id_to_idx for c in index.cards))
 
 
 # A 10 MB JPEG can decompress to 50+ megapixels (a "decompression bomb"); OpenCV holds
@@ -54,10 +78,18 @@ def get_orb_index() -> Optional[OrbIndex]:
 # any CV runs. 2200px ≈ ~1500px of card height — plenty for centering + edge-whitening on a
 # phone photo. ponytail: fixed ceiling; raise it only if measurement accuracy demands more.
 _MAX_LONG_EDGE = 2200
+_MAX_IMAGE_PIXELS = 40_000_000
 
 
 def decode_image(data: bytes) -> Optional[np.ndarray]:
     if not data:                       # empty upload: imdecode would THROW on an empty buffer
+        return None
+    # Inspect dimensions before OpenCV allocates the full decoded image.
+    try:
+        with Image.open(io.BytesIO(data)) as header:
+            if header.width * header.height > _MAX_IMAGE_PIXELS:
+                return None
+    except (OSError, ValueError, Image.DecompressionBombError):
         return None
     arr = np.frombuffer(data, np.uint8)
     try:
@@ -99,10 +131,15 @@ def _apply_real_graded(value: dict, card: dict, grade) -> None:
 
 def _px_corners(corners, img: np.ndarray):
     """Convert 4 normalised (0..1) corner points to pixel coords for the warp."""
-    if corners and len(corners) == 4:
+    if corners is not None:
         h, w = img.shape[:2]
         try:
-            return [[float(x) * w, float(y) * h] for x, y in corners]
+            pts = np.asarray(corners, dtype=np.float64)
+            if pts.shape != (4, 2) or not np.isfinite(pts).all() or (pts < 0).any() or (pts > 1).any():
+                return None
+            if abs(cv2.contourArea(cv2.convexHull(pts.astype(np.float32)))) < 0.01:
+                return None
+            return [[float(x) * w, float(y) * h] for x, y in pts]
         except Exception:
             return None
     return None
@@ -358,7 +395,8 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
                     # Real photo + a confident reference alignment = a real, trustworthy
                     # label. Harvest it for a future retrain on real data instead of the
                     # synthetic set FINDINGS.md already showed doesn't generalize.
-                    train_harvest.maybe_harvest(result.warped, cid, d, rc, d.get("inliers", 0))
+                    if config.TRAIN_HARVEST:
+                        train_harvest.maybe_harvest(result.warped, cid, d, rc, d.get("inliers", 0))
                 if d or rc:
                     g["overall"] = grading._combine(g["centering"], g["corners"],
                                                     g["edges"], g["surface"])
@@ -413,7 +451,7 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
     # Primary: pHash narrows 20k cards → a shortlist, then ORB confirms against just
     # those (sub-second, vs ~50s scanning all). NEVER guess — only present a confident
     # match; otherwise say we couldn't identify it.
-    if oi and oi.ok and len(index):
+    if len(index) and _orb_covers_index(index, oi):
         gr = _identify(result.warped, index, oi)
         if gr and gr.get("confident"):
             _present({"card": gr["card"], "method": "orb", "distance": 0,
@@ -422,7 +460,7 @@ def process_image(img: np.ndarray, corners=None, back_img: "np.ndarray | None" =
                       "print_uncertain": gr.get("print_uncertain", False)})
         else:
             _unsure(gr.get("card") if gr else None)
-    elif oi and oi.ok:
+    elif not len(index) and oi and oi.ok:
         # No pHash index loaded → fall back to the (slow) global ORB scan.
         gr = oi.query(result.warped)
         if gr and gr.get("confident"):

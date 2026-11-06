@@ -415,7 +415,7 @@ async def _read_upload(file: UploadFile) -> "bytes | None":
     """Read an upload, returning None if it exceeds the size cap (checked before decode)."""
     if file.size is not None and file.size > MAX_UPLOAD_BYTES:
         return None
-    data = await file.read()
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         return None
     return data
@@ -485,6 +485,8 @@ async def grade(file: UploadFile = File(...), corners: str = Form(None),
 
 
 async def _do_grade(file: UploadFile, corners, source, back_file=None, back_corners=None, scan=None):
+    if len(scan or []) > 6:
+        return JSONResponse({"ok": False, "message": "Please provide at most six extra scan frames."}, status_code=413)
     data = await _read_upload(file)
     if data is None:
         return _too_large()
@@ -513,6 +515,8 @@ async def _do_grade(file: UploadFile, corners, source, back_file=None, back_corn
     scan_datas = []
     for sf in (scan or []):
         b = await _read_upload(sf)
+        if b is None:
+            return _too_large()
         if b:
             scan_datas.append(b)
     # Offload the blocking CV + ORB downloads to a thread so the event loop

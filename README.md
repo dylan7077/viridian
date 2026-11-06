@@ -34,13 +34,18 @@ Everything runs offline except the price/card-data lookups. Nothing is uploaded
 to a grading company; there are no fees and no waiting weeks for results.
 
 > **Honesty first.** Of PSA's four criteria, only **centering** is truly
-> measurable with classical computer vision — it's a geometric border-ratio
-> measurement and Viridian does it for real. **Corners, edges and surface are
+> estimated from geometric border ratios, but accuracy on real photos is not yet
+> established for both axes. **Corners, edges and surface are
 > heuristic estimates** (and an experimental trained model, see below), not
-> certified sub-grades. Values come from [pokemontcg.io](https://pokemontcg.io)
+> certified sub-grades. Values come from [TCGdex](https://tcgdex.dev)
 > market prices, refined with real graded sold-comps where available — a
 > ballpark, not an appraisal. Viridian is for personal use and is **not
 > affiliated with or endorsed by PSA**.
+
+> The current centering score deliberately gives 10 through 60/40 on the front;
+> PSA's published Gem Mint 10 front guideline is approximately 55/45. The score is
+> an app heuristic, not a faithful application of the published standard. The back
+> has a different PSA tolerance, and this app's back score is also experimental.
 
 ---
 
@@ -72,7 +77,7 @@ cp .env.example .env        # then edit .env
 
 ### Build the card index (needed for identification + pricing)
 
-This downloads card metadata + images from pokemontcg.io and computes a
+This downloads card metadata + images from TCGdex and computes a
 perceptual hash (and ORB features) for each, so Viridian can recognise your
 card. The full database is large; start small:
 
@@ -83,12 +88,14 @@ python scripts/build_index.py --sets base1,base2,swsh1
 # Or cap the count:
 python scripts/build_index.py --limit 1000
 
+# Optional: build the feature database used by the stronger ORB matcher.
+python scripts/build_orb_db.py
+
 # Everything (slow — tens of thousands of cards). Resumable; re-run anytime:
 python scripts/build_index.py
 ```
 
-> Tip: a free [pokemontcg.io API key](https://dev.pokemontcg.io/) in `.env`
-> raises your rate limit and speeds this up.
+TCGdex does not require an API key. Set IDs follow TCGdex's catalog.
 
 ---
 
@@ -134,7 +141,7 @@ on single photos they don't reliably separate clean from damaged (see `FINDINGS.
 | 6. Identify | pHash narrows ~20k cards to a shortlist, then ORB feature matching confirms the exact card — or honestly says "couldn't match" rather than guessing | robust to phone photos |
 | 7. Re-measure centering | Once identified, centering is re-measured against the card's clean reference image — reliable even on holo / full-art | **measured** |
 | 8. Slab shortcut | If it's a sealed PSA slab, OCR reads the printed grade and skips re-grading | authoritative |
-| 9. Value | pokemontcg.io market price × grade multiplier, overridden by **real graded sold-comps** (eBay / Cardmarket) when available | ballpark → real |
+| 9. Value | TCGdex market price × grade multiplier, overridden by sold-comps when available | ballpark |
 
 Tune match strictness with `MATCH_MAX_DISTANCE` / ORB settings in `.env`.
 
@@ -145,6 +152,22 @@ robustness) and `scripts/validate_labeled.py` to re-check accuracy against label
 
 ## Roadmap / upgrade paths
 
+- **GPU training experiment:** install CUDA-enabled PyTorch and torchvision in the
+  virtual environment using the official [PyTorch selector](https://pytorch.org/get-started/locally/).
+  Generate synthetic examples with `python scripts/synth_damage.py data/card_images front
+  --per 4 --no-detect`, then run `python scripts/train_grader.py --device cuda`.
+  The trainer holds out source images by SHA-256, rather than splitting their synthetic
+  variants across train and validation. Legacy synthetic manifests must be regenerated.
+  The generated labels are artificial, not verified PSA grades; catalog scans are not
+  proof of a card's condition. Similar but differently encoded source images may still
+  leak between groups. A real, independently labeled and held-out photo set is needed
+  before interpreting model accuracy or using its predictions for grading.
+  Automatic collection of reference-derived pseudo-labels is off by default; set
+  `TRAIN_HARVEST=1` to save candidate images and labels locally for later review.
+- **Centering dataset:** [GemSnipe's measurements](https://github.com/rrh1441/pokemon-card-centering-measurements)
+  include listing IDs and CV-generated measurements, but not the corresponding image
+  files. They can support a comparison if the exact photos are obtained and matched;
+  they are not independently verified ground truth. Check image rights and provenance.
 - **Trained sub-grades:** the ONNX CNN (`src/onnx_grader.py`, trained via
   `scripts/train_grader.py`) is the path to making corners / edges / surface as
   trustworthy as centering. Currently advisory.
@@ -160,7 +183,7 @@ robustness) and `scripts/validate_labeled.py` to re-check accuracy against label
 - [simeydotme/pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) — holographic card effects
 - [chase-mew/pokemon-tcg-pocket-cards](https://github.com/chase-mew/pokemon-tcg-pocket-cards) — open card data
 - [prateekt/pokemon-card-recognizer](https://github.com/prateekt/pokemon-card-recognizer) — card recognition reference
-- [pokemontcg.io](https://pokemontcg.io) — card metadata & market pricing
+- [TCGdex](https://tcgdex.dev) — card metadata & market pricing
 - [cure51.com](https://www.cure51.com) — design inspiration
 
 ---

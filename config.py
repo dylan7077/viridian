@@ -36,6 +36,9 @@ MATCH_MAX_DISTANCE = int(os.getenv("MATCH_MAX_DISTANCE", "22"))
 # confirm it never skips a true slab before trusting it. Set SLAB_OCR_GATE=1 to enable.
 SLAB_OCR_GATE = os.getenv("SLAB_OCR_GATE", "0") not in ("0", "false", "False", "")
 
+# Store experimental reference-derived pseudo-labels only when explicitly enabled.
+TRAIN_HARVEST = os.getenv("TRAIN_HARVEST", "0").lower() not in ("0", "false", "")
+
 # ORB feature-matching re-rank of the pHash shortlist (robust to phone photos).
 USE_ORB = os.getenv("USE_ORB", "1") not in ("0", "false", "False")
 ORB_SHORTLIST = int(os.getenv("ORB_SHORTLIST", "6"))    # pHash candidates to re-rank

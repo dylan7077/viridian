@@ -387,7 +387,7 @@ function render(r) {
                   stroke-dasharray="${C}" stroke-dashoffset="${C}"/>
         </svg>
         <div class="seal-inner">
-          <span class="seal-psa">PSA</span>
+          <span class="seal-psa">${slabbed ? "PSA" : "EST"}</span>
           <span class="seal-num">0</span>
         </div>
       </div>
@@ -420,9 +420,9 @@ function render(r) {
     ${bar("Edges", g.edges.grade, !refGraded, refGraded ? "measured · counts" : "experimental")}
   </div>`;
   if (refGraded) {
-    html += `<p class="sg-note" style="margin-bottom:14px">Graded <b>TAG-style</b> — centering, corners and edges are measured against this card's reference print (the print cancels; real whitening &amp; damage survive) and count toward the grade. Surface uses a validated scratch detector.</p>`;
+    html += `<p class="sg-note" style="margin-bottom:14px">The estimate uses reference-image alignment for centering, corners and edges, plus a surface heuristic. Glare, printing differences and alignment errors can affect these experimental readings.</p>`;
   } else {
-    html += `<p class="sg-note" style="margin-bottom:18px">The grade is driven by <b>centering</b> (measured) and <b>surface</b> (validated on real cards). Corners &amp; edges are shown for reference only here — without a reference-image alignment, single-photo heuristics aren't reliable enough to count.</p>`;
+    html += `<p class="sg-note" style="margin-bottom:18px">The estimate uses centering and a rough surface heuristic. Corners and edges are shown for reference only without a reference-image alignment. Real-photo accuracy is limited.</p>`;
   }
   if (r.defect_overlay) {
     html += `<figure class="overlay-fig">

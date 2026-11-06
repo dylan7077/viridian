@@ -26,7 +26,30 @@ WIDTH = 480
 FIELDS = ("id", "name", "number", "set", "image", "rarity")
 
 
+def available_commit_bytes():
+    """Windows' remaining commit budget, or None when unavailable."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong),
+                    ("total_physical", ctypes.c_ulonglong), ("available_physical", ctypes.c_ulonglong),
+                    ("total_pagefile", ctypes.c_ulonglong), ("available_pagefile", ctypes.c_ulonglong),
+                    ("total_virtual", ctypes.c_ulonglong), ("available_virtual", ctypes.c_ulonglong),
+                    ("available_extended_virtual", ctypes.c_ulonglong)]
+    status = MemoryStatus()
+    status.length = ctypes.sizeof(status)
+    if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        return status.available_pagefile
+    return None
+
+
 def main():
+    free_commit = available_commit_bytes()
+    if free_commit is not None and free_commit < 2 * 1024**3:
+        print("Not enough free system commit for a safe ORB rebuild; retry when more is available.", file=sys.stderr)
+        return 1
+    cv2.setNumThreads(1)
     orb = cv2.ORB_create(nfeatures=NFEATURES)
     index = json.loads(config.INDEX_PATH.read_text())
     cards_meta, descs, owners = [], [], []
@@ -54,7 +77,7 @@ def main():
 
     if not descs:
         print("No cached images found — run scripts/precache_images.py first.")
-        return
+        return 1
     desc = np.vstack(descs)
     owner = np.concatenate(owners)
     out = config.DATA_DIR / "orb_db.npz"
@@ -64,8 +87,12 @@ def main():
     np.savez(tmp, desc=desc, owner=owner, cards=np.array(cards_meta, dtype=object))
     os.replace(tmp, out)
     print(f"Done. {len(cards_meta)} cards, {desc.shape[0]} descriptors -> {out}")
-    return len(cards_meta)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        sys.exit(main())
+    except (MemoryError, cv2.error) as exc:
+        print(f"ORB build failed; the previous database was not replaced: {exc}", file=sys.stderr)
+        sys.exit(1)

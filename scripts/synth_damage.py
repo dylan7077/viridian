@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import os
 import random
 import sys
@@ -151,9 +152,13 @@ def main():
     ap.add_argument("--per", type=int, default=8, help="synthetic examples per clean image")
     ap.add_argument("--limit", type=int, default=0, help="cap base images (0=all)")
     ap.add_argument("--stride", type=int, default=1, help="use every Nth base (diverse sampling)")
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-detect", action="store_true",
                     help="base images are already clean full-card (catalog renders) — skip detection")
     args = ap.parse_args()
+    rng.seed(args.seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
     IMG.mkdir(parents=True, exist_ok=True)
     import glob
     bases = sorted(glob.glob(os.path.join(args.clean_dir, "*.jpg")) +
@@ -164,12 +169,18 @@ def main():
     if args.limit:
         bases = bases[:args.limit]
     write_header = not MANIFEST.exists()
+    existing = set()
+    if not write_header:
+        with open(MANIFEST, newline="", encoding="utf-8") as manifest:
+            existing = {row["file"] for row in csv.DictReader(manifest)}
     n = 0
     with open(MANIFEST, "a", newline="") as f:
         w = csv.writer(f)
         if write_header:
             w.writerow(COLS)
         for bi, bp in enumerate(bases):
+            with open(bp, "rb") as source:
+                base_id = hashlib.sha256(source.read()).hexdigest()
             img = cv2.imread(bp)
             if img is None:
                 continue
@@ -178,8 +189,10 @@ def main():
             else:
                 det = grading.detect_back(img) if args.side == "back" else grading.detect_card(img)
             for k in range(args.per):
+                fid = f"synth_{args.side}_{base_id}_{k}"
+                if f"{fid}.jpg" in existing:
+                    continue
                 card, g = synth_one(det)
-                fid = f"synth_{args.side}_{bi:05d}_{k}"
                 cv2.imwrite(str(IMG / f"{fid}.jpg"), card)
                 # one manifest row per aspect (so per-aspect training can read it)
                 for aspect in ("centering", "corners", "edges", "surface", "overall"):

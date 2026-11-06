@@ -18,6 +18,7 @@ import io
 import json
 import os
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -34,6 +35,24 @@ API = config.TCGDEX_API
 # to mirror build progress into a Discord channel; unset = no notifications.
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", "")
 _LAST_WEBHOOK = 0
+
+
+class ProviderUnavailable(Exception):
+    """Stop the pass when the provider asks us to back off."""
+
+
+def save_index(existing):
+    """Publish a complete JSON file so readers never see a partial write."""
+    name = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=config.DATA_DIR,
+                                         delete=False) as tmp:
+            name = tmp.name
+            json.dump(list(existing.values()), tmp)
+        os.replace(name, config.INDEX_PATH)
+    finally:
+        if name and os.path.exists(name):
+            os.unlink(name)
 
 
 def webhook(msg: str):
@@ -78,10 +97,16 @@ def download_and_hash(card: dict, image_base: str) -> dict | None:
         if not cache_path.exists():
             url_high = image_base + "/high.png"
             high = requests.get(url_high, timeout=(5, 15))
-            if high.status_code == 200:
-                cache_path.write_bytes(high.content)
+            high.raise_for_status()
+            # A 200 HTML error or corrupt image must not poison the cache/index.
+            with Image.open(io.BytesIO(high.content)) as image:
+                image.verify()
+            cache_path.write_bytes(high.content)
         return {"id": cid, "ph": ph}
-    except Exception:
+    except Exception as exc:
+        if isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code in (429, 503):
+            raise ProviderUnavailable(f"TCGdex returned HTTP {exc.response.status_code}; retry later") from exc
+        print(f"  Could not index {card.get('id', '?')}: {exc}", flush=True)
         return None
 
 
@@ -89,7 +114,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sets", help="comma-separated TCGdex set ids (e.g. base1,me04)")
     ap.add_argument("--limit", type=int, default=0, help="max cards to index")
+    ap.add_argument("--workers", type=int, default=6, help="concurrent image downloads (default: 6)")
     args = ap.parse_args()
+    if not 1 <= args.workers <= 24:
+        ap.error("--workers must be between 1 and 24")
+    config.IMAGE_CACHE.mkdir(parents=True, exist_ok=True)
 
     existing = {}
     if config.INDEX_PATH.exists():
@@ -103,6 +132,7 @@ def main():
     print(f"Indexing {len(set_ids)} sets.", flush=True)
 
     added = 0
+    failed = False
     t0 = time.time()
     try:
         for sid in set_ids:
@@ -113,7 +143,7 @@ def main():
             for card in detail.get("cards", []):
                 if args.limit and len(existing) + len(pending) >= args.limit:
                     break
-                if card["id"] in existing:
+                if card["id"] in existing and (config.IMAGE_CACHE / f"{card['id']}.jpg").is_file():
                     continue
                 base = card.get("image")
                 if not base:
@@ -123,12 +153,18 @@ def main():
             if not pending:
                 continue
 
-            with ThreadPoolExecutor(max_workers=24) as pool:
+            with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 futures = {pool.submit(download_and_hash, c, b): c
                            for c, b in pending}
                 for fut in as_completed(futures):
-                    result = fut.result()
+                    try:
+                        result = fut.result()
+                    except ProviderUnavailable:
+                        for pending_future in futures:
+                            pending_future.cancel()
+                        raise
                     if result is None:
+                        failed = True
                         continue
                     card = futures[fut]
                     existing[card["id"]] = {
@@ -140,30 +176,28 @@ def main():
                         "phash": result["ph"],
                     }
                     added += 1
-                if added % 10 == 0:
-                    config.INDEX_PATH.write_text(json.dumps(list(existing.values())))
+                # Persist after every set, independent of how many cards succeeded.
+                save_index(existing)
                 if added % 100 == 0:
                     now = time.strftime("%H:%M")
-                    pct = len(existing) / 18500 * 100
-                    eta_mins = (18500 - len(existing)) / max(1, added / ((time.time() - t0) / 60))
-                    eta = time.strftime("%H:%M", time.localtime(time.time() + eta_mins * 60))
-                    print(f"  [{now}] {added} new (total {len(existing)}) — "
-                          f"{pct:.0f}% — ETA {eta}", flush=True)
+                    print(f"  [{now}] {added} new (total {len(existing)})", flush=True)
                 if added % 500 == 0 and added > 0:
-                    webhook(f"**Indexing**: {len(existing)} cards ({pct:.0f}%) — ETA {eta}")
+                    webhook(f"**Indexing**: {len(existing)} cards")
             time.sleep(0.03)
             if args.limit and len(existing) >= args.limit:
                 break
     except KeyboardInterrupt:
         print("Stopping early.")
     except Exception as e:
+        failed = True
         print(f"Aborted on error: {e}. Saving progress so far.")
 
     elapsed = time.time() - t0
-    config.INDEX_PATH.write_text(json.dumps(list(existing.values())))
+    save_index(existing)
     print(f"[{time.strftime('%H:%M')}] Done. Added {added} in {elapsed/60:.0f}m. "
           f"Index now holds {len(existing)} cards at {config.INDEX_PATH}", flush=True)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -74,8 +74,11 @@ def main(sources):
     new_rows = []
     counts = Counter()
     for spec in sources:
-        folder, _, side = spec.partition(":")
-        side = side or "front"
+        # A Windows drive letter also contains a colon. Only a recognized suffix
+        # is a side specifier; otherwise the entire string is a path.
+        folder, sep, side = spec.rpartition(":")
+        if not sep or side not in ("front", "back"):
+            folder, side = spec, "front"
         files = [os.path.join(folder, f) for f in sorted(os.listdir(folder))
                  if os.path.splitext(f)[1].lower() in (".jpg", ".jpeg", ".png", ".webp")]
         print(f"[{folder}] {len(files)} images (side={side})", flush=True)

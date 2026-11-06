@@ -46,6 +46,7 @@ def maybe_harvest(warped: np.ndarray, card_id: Optional[str], defects: Optional[
         if not ok:
             return
         label = {
+            "label_type": "reference_derived_pseudo_label_not_ground_truth",
             "card_id": card_id, "inliers": int(inliers),
             "corners": (defects or {}).get("corners"),
             "edges": (defects or {}).get("edges"),
